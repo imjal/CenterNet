@@ -24,6 +24,7 @@ from .base_detector import BaseDetector
 class CtdetDetector(BaseDetector):
   def __init__(self, opt):
     super(CtdetDetector, self).__init__(opt)
+    self.counter = 0
   
   def process(self, images, return_time=False):
     with torch.no_grad():
@@ -93,4 +94,7 @@ class CtdetDetector(BaseDetector):
       for bbox in results[j]:
         if bbox[4] > self.opt.vis_thresh:
           debugger.add_coco_bbox(bbox[:4], j - 1, bbox[4], img_id='ctdet')
-    debugger.show_all_imgs(pause=self.pause)
+    # debugger.show_all_imgs(pause=self.pause)
+    
+    debugger.save_all_imgs(path='/data2/jl5/cache/debug/', prefix=f'{self.counter}')
+    self.counter+=1
