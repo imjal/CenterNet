@@ -14,6 +14,7 @@ from models.data_parallel import DataParallel
 from logger import Logger
 from datasets.dataset_factory import get_dataset
 from trains.train_factory import train_factory
+import pdb
 
 
 def main(opt):
@@ -49,19 +50,22 @@ def main(opt):
       pin_memory=True
   )
 
+  if opt.dataset == 'bddstream':
+    train_loader = torch.utils.data.DataLoader(Dataset(opt, 'train'), pin_memory=True)
+  else:
+    train_loader = torch.utils.data.DataLoader(
+        Dataset(opt, 'train'), 
+        shuffle=True,
+        batch_size=opt.batch_size,
+        num_workers=opt.num_workers, 
+        pin_memory=True,
+        drop_last=True
+    )
+  
   if opt.test:
-    _, preds = trainer.val(0, val_loader)
+    _, preds = trainer.val(0, val_loader) # val_loader)
     val_loader.dataset.run_eval(preds, opt.save_dir)
     return
-
-  train_loader = torch.utils.data.DataLoader(
-      Dataset(opt, 'train'), 
-      batch_size=opt.batch_size, 
-      shuffle=True,
-      num_workers=opt.num_workers,
-      pin_memory=True,
-      drop_last=True
-  )
 
   print('Starting training...')
   best = 1e10

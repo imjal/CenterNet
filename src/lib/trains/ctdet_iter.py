@@ -12,7 +12,7 @@ from models.utils import _sigmoid
 from utils.debugger import Debugger
 from utils.post_process import ctdet_post_process
 from utils.oracle_utils import gen_oracle_map
-from .base_trainer import BaseTrainer
+from .base_trainer_iter import BaseTrainerIter
 
 class CtdetLoss(torch.nn.Module):
   def __init__(self, opt):
@@ -73,9 +73,9 @@ class CtdetLoss(torch.nn.Module):
                   'wh_loss': wh_loss, 'off_loss': off_loss}
     return loss, loss_stats
 
-class CtdetTrainer(BaseTrainer):
+class CtdetTrainerIter(BaseTrainerIter):
   def __init__(self, opt, model, optimizer=None):
-    super(CtdetTrainer, self).__init__(opt, model, optimizer=optimizer)
+    super(CtdetTrainerIter, self).__init__(opt, model, optimizer=optimizer)
   
   def _get_losses(self, opt):
     loss_states = ['loss', 'hm_loss', 'wh_loss', 'off_loss']
@@ -104,13 +104,13 @@ class CtdetTrainer(BaseTrainer):
       debugger.add_blend_img(img, gt, 'gt_hm')
       debugger.add_img(img, img_id='out_pred')
       for k in range(len(dets[i])):
-        if dets[i, k, 4] > opt.vis_thresh:
+        if dets[i, k, 4] > opt.center_thresh:
           debugger.add_coco_bbox(dets[i, k, :4], dets[i, k, -1],
                                  dets[i, k, 4], img_id='out_pred')
 
       debugger.add_img(img, img_id='out_gt')
       for k in range(len(dets_gt[i])):
-        if dets_gt[i, k, 4] > opt.vis_thresh:
+        if dets_gt[i, k, 4] > opt.center_thresh:
           debugger.add_coco_bbox(dets_gt[i, k, :4], dets_gt[i, k, -1],
                                  dets_gt[i, k, 4], img_id='out_gt')
 

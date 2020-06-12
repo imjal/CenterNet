@@ -13,7 +13,7 @@ class opts(object):
     self.parser.add_argument('task', default='ctdet',
                              help='ctdet | ddd | multi_pose | exdet')
     self.parser.add_argument('--dataset', default='coco',
-                             help='coco | kitti | coco_hp | pascal | bdd')
+                             help='coco | kitti | coco_hp | pascal | bdd | bddstream')
     self.parser.add_argument('--exp_id', default='default')
     self.parser.add_argument('--test', action='store_true')
     self.parser.add_argument('--debug', type=int, default=0,
@@ -31,7 +31,9 @@ class opts(object):
                              help='resume an experiment. '
                                   'Reloaded the optimizer parameter and '
                                   'set load_model to model_last.pth '
-                                  'in the exp dir if load_model is empty.') 
+                                  'in the exp dir if load_model is empty.')
+    self.parser.add_argument('--vid_paths', nargs='+', help='Video Paths For Video Stream')
+    self.parser.add_argument('--ann_paths', nargs='+', help='Mask-RCNN Annotations For Video Stream')
 
     # system
     self.parser.add_argument('--gpus', default='0', 
@@ -314,6 +316,11 @@ class opts(object):
         opt.heads.update({'reg': 2})
     elif opt.task == 'ctdet':
       # assert opt.dataset in ['pascal', 'coco']
+      opt.heads = {'hm': opt.num_classes,
+                   'wh': 2 if not opt.cat_spec_wh else 2 * opt.num_classes}
+      if opt.reg_offset:
+        opt.heads.update({'reg': 2})
+    elif opt.task == 'ctdet_stream':
       opt.heads = {'hm': opt.num_classes,
                    'wh': 2 if not opt.cat_spec_wh else 2 * opt.num_classes}
       if opt.reg_offset:

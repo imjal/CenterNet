@@ -33,7 +33,7 @@ class CTDetDataset(data.Dataset):
     ann_ids = self.coco.getAnnIds(imgIds=[img_id])
     anns = self.coco.loadAnns(ids=ann_ids)
     num_objs = min(len(anns), self.max_objs)
-
+    
     img = cv2.imread(img_path)
 
     height, width = img.shape[0], img.shape[1]
@@ -140,6 +140,6 @@ class CTDetDataset(data.Dataset):
     if self.opt.debug > 0 or not self.split == 'train':
       gt_det = np.array(gt_det, dtype=np.float32) if len(gt_det) > 0 else \
                np.zeros((1, 6), dtype=np.float32)
-      meta = {'c': c, 's': s, 'gt_det': gt_det, 'img_id': img_id}
+      meta = {'c': c, 's': s, 'gt_det': gt_det, 'img_id': img_id, 'file_name': file_name}
       ret['meta'] = meta
     return ret

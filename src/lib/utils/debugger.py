@@ -62,6 +62,10 @@ class Debugger(object):
       self.focal_length = 721.5377
       self.W = 1242
       self.H = 375
+    elif num_classes==10 or dataset=='bdd':
+      self.names = bdd_class_name
+    elif num_classes==3 or dataset=='bddstream': 
+      self.names = coco2bdd_class_names
     num_classes = len(self.names)
     self.down_ratio=down_ratio
     # for bird view
@@ -434,6 +438,25 @@ kitti_class_name = [
 
 gta_class_name = [
   'p', 'v'
+]
+
+coco2bdd_class_names = [
+  'human', 
+  '4 wheeler', 
+  '2 wheeler'
+]
+
+bdd_class_name = [
+    "person",
+    "rider",
+    "car",
+    "bus",
+    "truck",
+    "bike",
+    "motor",
+    "traffic light",
+    "traffic sign",
+    "train"
 ]
 
 pascal_class_name = ["aeroplane", "bicycle", "bird", "boat", "bottle", "bus", 

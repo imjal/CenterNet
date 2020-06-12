@@ -46,6 +46,7 @@ def _neg_loss(pred, gt):
       pred (batch x c x h x w)
       gt_regr (batch x c x h x w)
   '''
+  import pdb; pdb.set_trace()
   pos_inds = gt.eq(1).float()
   neg_inds = gt.lt(1).float()
 

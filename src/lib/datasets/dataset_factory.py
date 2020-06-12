@@ -11,7 +11,7 @@ from .dataset.coco import COCO
 from .dataset.pascal import PascalVOC
 from .dataset.kitti import KITTI
 from .dataset.coco_hp import COCOHP
-from .dataset.bdd import BDD
+from .dataset.bdd import BDD, BDDStream
 
 
 dataset_factory = {
@@ -31,6 +31,8 @@ _sample_factory = {
 
 
 def get_dataset(dataset, task):
+  if dataset == 'bddstream':
+    return BDDStream
   class Dataset(dataset_factory[dataset], _sample_factory[task]):
     pass
   return Dataset
