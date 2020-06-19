@@ -142,7 +142,6 @@ class CrossEntropy2d(nn.Module):
       assert predict.size(3) == target.size(2), "{0} vs {1} ".format(predict.size(3), target.size(3))
       n, c, h, w = predict.size()
       target = target.long()
-      import pdb; pdb.set_trace()
       loss = F.cross_entropy(predict, target, reduction='none')
       weight = weight.float() * 5
       total_loss = (loss * weight).mean()
