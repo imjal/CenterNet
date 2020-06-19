@@ -13,5 +13,6 @@ train_factory = {
   'ddd': DddTrainer,
   'ctdet': CtdetTrainer,
   'multi_pose': MultiPoseTrainer,
-  'ctdet_stream': CtdetTrainerIter
+  'ctdet_stream': CtdetTrainerIter,
+  'ctdet_semseg': CtdetTrainerIter
 }

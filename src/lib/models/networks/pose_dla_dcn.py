@@ -441,16 +441,26 @@ class DLASeg(nn.Module):
 
         self.ida_up = IDAUp(out_channel, channels[self.first_level:self.last_level], 
                             [2 ** i for i in range(self.last_level - self.first_level)])
-        
         self.heads = heads
         for head in self.heads:
             classes = self.heads[head]
-            if head_conv > 0:
+            if 'seg' in head: # attempted to make a JITNet Style Head, but needed to upsample twice at 2x
+                fc = nn.Sequential(nn.BatchNorm2d(64), 
+                    nn.Conv2d(64, 64, kernel_size=3, stride=1, padding=1, bias=False),
+                    nn.Conv2d(64, 64, kernel_size=3, stride=1, padding=1, bias=False),
+                    nn.Upsample(scale_factor=2, mode='nearest'), 
+                    nn.Conv2d(64, 64, kernel_size=3, stride=1, padding=1, bias=False),
+                    nn.Conv2d(64, 64, kernel_size=3, stride=1, padding=1, bias=False),
+                    nn.Upsample(scale_factor=2, mode='nearest'),
+                    nn.Conv2d(64, 64, kernel_size=(1, 1), stride=1),
+                    nn.Conv2d(64, classes, kernel_size= (1,1), stride=1, bias=False))
+                fill_fc_weights(fc)
+            elif head_conv > 0:
               fc = nn.Sequential(
                   nn.Conv2d(channels[self.first_level], head_conv,
                     kernel_size=3, padding=1, bias=True),
                   nn.ReLU(inplace=True),
-                  nn.Conv2d(head_conv, classes, 
+                  nn.Conv2d(head_conv, classes,
                     kernel_size=final_kernel, stride=1, 
                     padding=final_kernel // 2, bias=True))
               if 'hm' in head:

@@ -86,6 +86,26 @@ class Debugger(object):
     cv2.imshow('{}'.format(imgId), self.imgs[imgId])
     if pause:
       cv2.waitKey()
+
+  def visualize_masks(self, labels, img_id = 'default'):
+    labels_vis = np.zeros((labels.shape[0], labels.shape[1], 3), np.uint8)
+    cmap = [[166, 206, 227],
+            [178, 223, 138],
+            [31,  120, 180],
+            [51,  160,  44],
+            [251, 154, 153],
+            [227,  26,  28],
+            [253, 191, 111],
+            [255, 127,   0],
+            [202, 178, 214],
+            [106,  61, 154],
+            [255, 255, 153],
+            [177, 89,   40],
+            [125, 125, 125]] # added a gray one. might not be perfect
+    for i in range(labels.shape[0]):
+      for j in range(labels.shape[1]):
+        labels_vis[i, j] = cmap[labels[i, j]]
+    self.imgs[img_id] = labels_vis
   
   def add_blend_img(self, back, fore, img_id='blend', trans=0.7):
     if self.theme == 'white':
@@ -186,6 +206,8 @@ class Debugger(object):
     cv2.rectangle(
       self.imgs[img_id], (bbox[0], bbox[1]), (bbox[2], bbox[3]), c, 2)
     if show_txt:
+      if type(bbox[1]) != np.int32:
+        import pdb; pdb.set_trace()
       cv2.rectangle(self.imgs[img_id],
                     (bbox[0], bbox[1] - cat_size[1] - 2),
                     (bbox[0] + cat_size[0], bbox[1] - 2), c, -1)

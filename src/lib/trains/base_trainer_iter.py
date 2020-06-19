@@ -8,6 +8,10 @@ from progress.bar import Bar
 from models.data_parallel import DataParallel
 from utils.utils import AverageMeter
 import numpy as np
+from models.decode import ctdet_filt_centers
+from scipy.spatial import distance
+import pdb
+
 
 
 class ModelWithLoss(torch.nn.Module):
@@ -41,6 +45,64 @@ class BaseTrainerIter(object):
       for k, v in state.items():
         if isinstance(v, torch.Tensor):
           state[k] = v.to(device=device, non_blocking=True)
+
+  def get_ap(recalls, precisions):
+    # correct AP calculation
+    # first append sentinel values at the end
+    recalls = np.concatenate(([0.], recalls, [1.]))
+    precisions = np.concatenate(([0.], precisions, [0.]))
+
+    # compute the precision envelope
+    for i in range(precisions.size - 1, 0, -1):
+        precisions[i - 1] = np.maximum(precisions[i - 1], precisions[i])
+
+    # to calculate area under PR curve, look for points
+    # where X axis (recall) changes value
+    i = np.where(recalls[1:] != recalls[:-1])[0]
+
+    # and sum (\Delta recall) * prec
+    ap = np.sum((recalls[i + 1] - recalls[i]) * precisions[i + 1])
+    return ap
+
+
+  def mAP(self, batch, outputs, center_thresh):
+    predictions = ctdet_filt_centers(outputs['hm'], outputs['reg']) # is this sorted? 
+    gt_inds = np.where(batch['hm'].to("cpu").numpy() == 1.0)
+    gt_checked = np.zeros((len(gt_inds)))
+    filt_pred = []
+    for i in range(len(predictions)):
+      if predictions[i][2] >= center_thresh:
+        filt_pred += [predictions[i]]
+
+    nd = len(filt_pred)
+    tp = np.zeros((nd))
+    fp = np.zeros((nd))
+    for i, p in enumerate(filt_pred):
+      x = p[0]
+      y = p[1]
+      s = p[2]
+      min_dist = -np.inf
+      min_arg = -1
+      pdb.set_trace()
+      if len(gt_inds) > 0:
+        # dist from each point
+        dist = distance.cdist(gt_inds, np.array([[x, y]]), 'euclidean')
+        # take min & assign
+        min_dist = np.min(dist, axis = 0)
+        min_arg = np.argmin(dist, axis = 0)
+        if gt_checked[min_arg] == 0:
+          tp[i] = 1.
+          gt_checked[jmax, t] = 1
+        else:
+          fp[i] = 1.
+    pdb.set_trace()
+    fp = np.cumsum(fp, axis=0)
+    tp = np.cumsum(tp, axis=0)
+    recalls = tp / float(len(gt_inds))
+    precisions = tp / np.maximum(tp + fp, np.finfo(np.float64).eps)
+    ap = get_ap(recalls, precisions)
+
+    return recalls, precisions, ap
 
   def meanIOU(self, batch, outputs):
     def convert2d(arr): # convert a one-hot into a thresholded array
@@ -138,7 +200,8 @@ class BaseTrainerIter(object):
         update = True
         while(update):
           output, loss, loss_stats = run_model(batch)
-          acc = self.meanIOU(batch, output)
+          # save the stuff every iteration
+          acc = self.meanIOU(batch, output) # self.mAP(batch, output, self.opt.center_thresh)
           if u < umax and acc < a_thresh:
             print(acc)
             update_model(loss)
@@ -154,7 +217,8 @@ class BaseTrainerIter(object):
       
       batch_time.update(time.time() - end)
       end = time.time()
-      
+      if opt.debug > 0:
+            self.debug(batch, output, iter_id)
       
       # add a bunch of stuff to the bar to print
       Bar.suffix = '{phase}: [{0}][{1}/{2}]|Tot: {total:} |ETA: {eta:} '.format(
@@ -172,10 +236,6 @@ class BaseTrainerIter(object):
           print('{}/{}| {}'.format(opt.task, opt.exp_id, Bar.suffix))
       else:
         bar.next()
-      
-      # save the stuff every iteration
-      if opt.debug > 0:
-        self.debug(batch, output, iter_id)
       
       if opt.test:
         self.save_result(output, batch, results)

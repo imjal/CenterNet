@@ -46,7 +46,6 @@ def _neg_loss(pred, gt):
       pred (batch x c x h x w)
       gt_regr (batch x c x h x w)
   '''
-  import pdb; pdb.set_trace()
   pos_inds = gt.eq(1).float()
   neg_inds = gt.lt(1).float()
 
@@ -120,6 +119,34 @@ class FocalLoss(nn.Module):
 
   def forward(self, out, target):
     return self.neg_loss(out, target)
+
+class CrossEntropy2d(nn.Module):
+
+  def __init__(self, ignore_label=0):
+      super(CrossEntropy2d, self).__init__()
+      self.ignore_label = ignore_label
+
+  def forward(self, predict, target, weight=None):
+      """
+          Args:
+              predict:(n, c, h, w)
+              target:(n, h, w)
+              weight (Tensor, optional): a manual rescaling weight given to each class.
+                                          If given, has to be a Tensor of size "nclasses"
+      """
+      assert not target.requires_grad
+      assert predict.dim() == 4
+      assert target.dim() == 3
+      assert predict.size(0) == target.size(0), "{0} vs {1} ".format(predict.size(0), target.size(0))
+      assert predict.size(2) == target.size(1), "{0} vs {1} ".format(predict.size(2), target.size(1))
+      assert predict.size(3) == target.size(2), "{0} vs {1} ".format(predict.size(3), target.size(3))
+      n, c, h, w = predict.size()
+      target = target.long()
+      import pdb; pdb.set_trace()
+      loss = F.cross_entropy(predict, target, reduction='none')
+      weight = weight.float() * 5
+      total_loss = (loss * weight).mean()
+      return total_loss
 
 class RegLoss(nn.Module):
   '''Regression loss for an output tensor

@@ -1,4 +1,4 @@
-python main.py ctdet_stream  --exp_id adaptive_pretrained_no_aug_tmp --batch_size 1 --lr 5e-4 --gpus 0 --num_workers 1 --num_epochs 1 \
+python main.py ctdet_semseg  --exp_id adaptive_pretrained_no_aug_tmp --batch_size 1 --lr 5e-4 --gpus 0 --num_workers 1 --num_epochs 1 \
     --arch dla_34 \
     --num_iters 1210 \
     --dataset bddstream --vid_paths /data2/jl5/bdd100k/videos/100k/train/02133057-fc70cc0e.mov \

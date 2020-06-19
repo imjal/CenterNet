@@ -5,8 +5,7 @@ from __future__ import print_function
 import torch
 import numpy as np
 
-from models.losses import FocalLoss
-from models.losses import RegL1Loss, RegLoss, NormRegL1Loss, RegWeightedL1Loss
+from models.losses import FocalLoss, RegL1Loss, RegLoss, NormRegL1Loss, RegWeightedL1Loss, CrossEntropy2d
 from models.decode import ctdet_decode
 from models.utils import _sigmoid
 from utils.debugger import Debugger
@@ -23,11 +22,12 @@ class CtdetLoss(torch.nn.Module):
     self.crit_wh = torch.nn.L1Loss(reduction='sum') if opt.dense_wh else \
               NormRegL1Loss() if opt.norm_wh else \
               RegWeightedL1Loss() if opt.cat_spec_wh else self.crit_reg
+    self.crit_seg = CrossEntropy2d()
     self.opt = opt
 
   def forward(self, outputs, batch):
     opt = self.opt
-    hm_loss, wh_loss, off_loss = 0, 0, 0
+    hm_loss, wh_loss, off_loss, sem_seg_loss = 0, 0, 0, 0
     for s in range(opt.num_stacks):
       output = outputs[s]
       if not opt.mse_loss:
@@ -62,15 +62,16 @@ class CtdetLoss(torch.nn.Module):
           wh_loss += self.crit_reg(
             output['wh'], batch['reg_mask'],
             batch['ind'], batch['wh']) / opt.num_stacks
-      
+      if opt.task == 'ctdet_semseg':
+        sem_seg_loss = torch.mean(self.crit_seg(output['seg'], batch['seg'][0], batch['weight_seg'][0]))
       if opt.reg_offset and opt.off_weight > 0:
         off_loss += self.crit_reg(output['reg'], batch['reg_mask'],
                              batch['ind'], batch['reg']) / opt.num_stacks
         
     loss = opt.hm_weight * hm_loss + opt.wh_weight * wh_loss + \
-           opt.off_weight * off_loss
+           opt.off_weight * off_loss + sem_seg_loss
     loss_stats = {'loss': loss, 'hm_loss': hm_loss,
-                  'wh_loss': wh_loss, 'off_loss': off_loss}
+                  'wh_loss': wh_loss, 'off_loss': off_loss, 'sem_seg_loss': sem_seg_loss}
     return loss, loss_stats
 
 class CtdetTrainerIter(BaseTrainerIter):
@@ -92,6 +93,9 @@ class CtdetTrainerIter(BaseTrainerIter):
     dets[:, :, :4] *= opt.down_ratio
     dets_gt = batch['meta']['gt_det'].numpy().reshape(1, -1, dets.shape[2])
     dets_gt[:, :, :4] *= opt.down_ratio
+    seg_gt = batch['seg'][0][0].cpu().numpy()
+    seg_pred = output['seg'].max(1)[1].squeeze_(1).squeeze_(0).cpu().numpy()
+
     for i in range(1):
       debugger = Debugger(
         dataset=opt.dataset, ipynb=(opt.debug==3), theme=opt.debugger_theme)
@@ -104,15 +108,19 @@ class CtdetTrainerIter(BaseTrainerIter):
       debugger.add_blend_img(img, gt, 'gt_hm')
       debugger.add_img(img, img_id='out_pred')
       for k in range(len(dets[i])):
-        if dets[i, k, 4] > opt.center_thresh:
+        if dets[i, k, 4] > opt.vis_thresh:
           debugger.add_coco_bbox(dets[i, k, :4], dets[i, k, -1],
                                  dets[i, k, 4], img_id='out_pred')
 
       debugger.add_img(img, img_id='out_gt')
       for k in range(len(dets_gt[i])):
-        if dets_gt[i, k, 4] > opt.center_thresh:
+        if dets_gt[i, k, 4] > opt.vis_thresh:
           debugger.add_coco_bbox(dets_gt[i, k, :4], dets_gt[i, k, -1],
                                  dets_gt[i, k, 4], img_id='out_gt')
+      
+      debugger.visualize_masks(seg_gt, img_id='out_mask_gt')
+      debugger.visualize_masks(seg_pred, img_id='out_mask_pred')
+      import pdb; pdb.set_trace()
 
       if opt.debug == 4:
         debugger.save_all_imgs(opt.debug_dir, prefix='{}'.format(iter_id))
