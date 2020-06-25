@@ -11,6 +11,7 @@ import numpy as np
 from models.decode import ctdet_filt_centers
 from scipy.spatial import distance
 import pdb
+from copy import deepcopy
 
 
 
@@ -175,6 +176,10 @@ class BaseTrainerIter(object):
     umax = 64
     a_thresh = 0.75
 
+    replay_buffer = [None] * opt.replay_samples
+    replay_idx = 0
+
+
     def run_model(batch):
       for k in batch:
         if k != 'meta':
@@ -193,6 +198,22 @@ class BaseTrainerIter(object):
       if iter_id >= num_iters:
         break
       data_time.update(time.time() - end)
+      replay_buffer[replay_idx] = deepcopy(batch)
+      replay_idx = (replay_idx + 1) % opt.replay_samples
+      if iter_id == 0:
+        for i in range(1, opt.replay_samples):
+          replay_buffer[i] = deepcopy(batch)
+          replay_idx = (i + 1) % opt.replay_samples
+      
+      batch_in = batch
+      for i in range(1, opt.replay_samples):
+        for k, v in replay_buffer[i].items():
+          if k == 'meta':
+            for kk, vv in v.items():
+              batch_in[k][kk] = torch.cat([batch_in[k][kk], vv])
+          else:
+            batch_in[k] = torch.cat([batch_in[k], v])
+      batch = batch_in
 
       # JITNet logic
       if iter_id % delta == 0:
@@ -218,7 +239,7 @@ class BaseTrainerIter(object):
       batch_time.update(time.time() - end)
       end = time.time()
       if opt.debug > 0:
-            self.debug(batch, output, iter_id)
+        self.debug(batch, output, iter_id)
       
       # add a bunch of stuff to the bar to print
       Bar.suffix = '{phase}: [{0}][{1}/{2}]|Tot: {total:} |ETA: {eta:} '.format(

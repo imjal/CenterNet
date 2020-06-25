@@ -63,7 +63,7 @@ class CtdetLoss(torch.nn.Module):
             output['wh'], batch['reg_mask'],
             batch['ind'], batch['wh']) / opt.num_stacks
       if opt.task == 'ctdet_semseg':
-        sem_seg_loss = torch.mean(self.crit_seg(output['seg'], batch['seg'][0], batch['weight_seg'][0]))
+        sem_seg_loss = torch.mean(self.crit_seg(output['seg'], batch['seg'], batch['weight_seg']))
       if opt.reg_offset and opt.off_weight > 0:
         off_loss += self.crit_reg(output['reg'], batch['reg_mask'],
                              batch['ind'], batch['reg']) / opt.num_stacks
@@ -93,7 +93,8 @@ class CtdetTrainerIter(BaseTrainerIter):
     dets[:, :, :4] *= opt.down_ratio
     dets_gt = batch['meta']['gt_det'].numpy().reshape(1, -1, dets.shape[2])
     dets_gt[:, :, :4] *= opt.down_ratio
-    seg_gt = batch['seg'][0][0].cpu().numpy()
+    import pdb; pdb.set_trace()
+    seg_gt = batch['seg'][0].cpu().numpy()
     seg_pred = output['seg'].max(1)[1].squeeze_(1).squeeze_(0).cpu().numpy()
 
     for i in range(1):
@@ -119,8 +120,7 @@ class CtdetTrainerIter(BaseTrainerIter):
                                  dets_gt[i, k, 4], img_id='out_gt')
       
       debugger.visualize_masks(seg_gt, img_id='out_mask_gt')
-      debugger.visualize_masks(seg_pred, img_id='out_mask_pred')
-      import pdb; pdb.set_trace()
+      debugger.visualize_masks(seg_pred[0], img_id='out_mask_pred')
 
       if opt.debug == 4:
         debugger.save_all_imgs(opt.debug_dir, prefix='{}'.format(iter_id))

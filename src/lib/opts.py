@@ -225,6 +225,10 @@ class opts(object):
                              help='use ground truth human joint local offset.')
     self.parser.add_argument('--eval_oracle_dep', action='store_true', 
                              help='use ground truth depth.')
+    self.parser.add_argument('--replay_samples', type=int, default=1,
+                             help='# of cached samples')
+
+                            
 
   def parse(self, args=''):
     if args == '':
