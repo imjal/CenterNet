@@ -112,7 +112,7 @@ def batch_segmentation_masks(batch_size,
 
         idx = classes > 0
         boxes = boxes[idx]
-        masks = masks[idx]
+        maslks = masks[idx]
         classes = classes[idx]
         scores = scores[idx]
 

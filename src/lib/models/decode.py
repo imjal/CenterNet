@@ -482,7 +482,8 @@ def ctdet_filt_centers(heat, reg=None, cat_spec_wh=False, K=100):
     xs = xs.to("cpu").detach().numpy().reshape(1, 100).transpose()
     ys = ys.to("cpu").detach().numpy().reshape(1, 100).transpose()
     scores = scores.to("cpu").detach().numpy().transpose()
-    ret = np.concatenate((xs, ys, scores), axis=1)
+    clses = clses.to("cpu").detach().numpy().transpose()
+    ret = np.concatenate((clses, xs, ys, scores), axis=1)
     return ret
 
 def ctdet_decode(heat, wh, reg=None, cat_spec_wh=False, K=100):

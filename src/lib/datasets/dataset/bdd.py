@@ -204,28 +204,45 @@ class BDDStream(data.IterableDataset):
   # def __len__(self):
   #   return 10000000
 
+  def _frame_from_video(self, video):
+    while video.isOpened():
+        success, frame = video.read()
+        if success:
+            yield frame
+        else:
+            break
+
   def __next__(self):
     if self.cap is None or self.count >= self.length:
       if self.cap is not None and self.vid_i == self.num_videos and self.loop:
           self.vid_i = 0
-      self.cap = skvideo.io.vread(self.video_paths[self.vid_i])
-      metadata = skvideo.io.ffprobe(self.video_paths[self.vid_i])
-      fr_lst = metadata['video']['@avg_frame_rate'].split('/')
-      self.rate = int(fr_lst[0])/int(fr_lst[1])
-      self.length = int(metadata['video']['@nb_frames'])
+      # self.cap = skvideo.io.vread(self.video_paths[self.vid_i])
+      # metadata = skvideo.io.ffprobe(self.video_paths[self.vid_i])
+      # fr_lst = metadata['video']['@avg_frame_rate'].split('/')
+      # self.rate = int(fr_lst[0])/int(fr_lst[1])
+      # self.length = int(metadata['video']['@nb_frames'])
+      # self.detections = pickle.load(open(self.annotation_path[self.vid_i], 'rb'))
+      # self.num_frames = len(self.detections)
+      # self.count = 0
+      # self.vid_i +=1
+
+      self.cap = cv2.VideoCapture(self.video_paths[self.vid_i])
+      width = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+      height = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+      self.rate = self.cap.get(cv2.CAP_PROP_FPS)
+      self.length = int(self.cap.get(cv2.CAP_PROP_FRAME_COUNT))
       self.detections = pickle.load(open(self.annotation_path[self.vid_i], 'rb'))
       self.num_frames = len(self.detections)
       self.count = 0
       self.vid_i +=1
-
-    if self.count > 100:
-      self.count = 0
-
-    img = self.cap[self.count]
+      self.frame_gen = self._frame_from_video(self.cap)
+    
+    original_img = next(self.frame_gen) # self.cap[self.count]
+    img = cv2.resize(original_img, (1280, 720))
     anns = self.pred_to_inst(self.detections[self.count])
     num_objs = min(len(anns), self.max_objs)
 
-    height, width = img.shape[0], img.shape[1]
+    # height, width = img.shape[0], img.shape[1]
     c = np.array([img.shape[1] / 2., img.shape[0] / 2.], dtype=np.float32)
     if self.opt.keep_res:
       input_h = (height | self.opt.pad) + 1
@@ -261,6 +278,7 @@ class BDDStream(data.IterableDataset):
       inp = cv2.warpAffine(img, trans_input, 
                           (input_w, input_h),
                           flags=cv2.INTER_LINEAR)
+      inp_before_mod = inp
       inp = (inp.astype(np.float32) / 255.)
       if self.split == 'train' and not self.opt.no_color_aug:
         color_aug(self._data_rng, inp, self._eig_val, self._eig_vec)
@@ -286,23 +304,28 @@ class BDDStream(data.IterableDataset):
 
     gt_det = []
       
-    def show_bbox(im):
+    def show_bbox(im, bbox):
       fig,ax = plt.subplots(1)
       ax.imshow(im)
       for i in range(num_objs):
-        bbox = anns[i]['bbox']
         rect = patches.Rectangle((bbox[0],bbox[1]),bbox[2]-bbox[0],bbox[3]-bbox[1],linewidth=1,edgecolor='r',facecolor='none')
         ax.add_patch(rect)
       plt.savefig('/home/jl5/CenterNet/tmp.png')
       pdb.set_trace()
 
     detect = self.detections[self.count]
-    seg_mask, weight_mask = batch_segmentation_masks(1, (height, width), np.array([detect['boxes']]), np.array([detect['classes']]), detect['masks'],
+    seg_mask, weight_mask = batch_segmentation_masks(1, original_img.shape, np.array([detect['boxes']]), np.array([detect['classes']]), detect['masks'],
         np.array([detect['scores']]), [len(detect['boxes'])], True, coco_class_groups, mask_threshold=0.5, box_threshold=self.opt.center_thresh, scale_boxes=False)
-    
+    seg_mask = cv2.resize(seg_mask[0], (1280, 736))
+    tmp = weight_mask.astype(np.uint8)
+    weight_mask = cv2.resize(tmp[0], (1280, 736))
+    seg_mask = seg_mask[np.newaxis, :, :]
+    weight_mask = weight_mask[np.newaxis, :, :].astype(bool)
+
     for k in range(num_objs):
       ann = anns[k]
       bbox = np.array(ann['bbox'], dtype=np.float32) # self._coco_box_to_bbox(ann['bbox'])
+      bbox = bbox / 3
       cls_id = int(self.cat_ids[ann['category_id']])
       if flipped:
         bbox[[0, 2]] = width - bbox[[2, 0]] - 1
@@ -310,6 +333,7 @@ class BDDStream(data.IterableDataset):
       bbox[2:] = affine_transform(bbox[2:], trans_output)
       bbox[[0, 2]] = np.clip(bbox[[0, 2]], 0, output_w - 1)
       bbox[[1, 3]] = np.clip(bbox[[1, 3]], 0, output_h - 1)
+      
       h, w = bbox[3] - bbox[1], bbox[2] - bbox[0]
       if h > 0 and w > 0:
         radius = gaussian_radius((math.ceil(h), math.ceil(w)))

@@ -206,8 +206,6 @@ class Debugger(object):
     cv2.rectangle(
       self.imgs[img_id], (bbox[0], bbox[1]), (bbox[2], bbox[3]), c, 2)
     if show_txt:
-      if type(bbox[1]) != np.int32:
-        import pdb; pdb.set_trace()
       cv2.rectangle(self.imgs[img_id],
                     (bbox[0], bbox[1] - cat_size[1] - 2),
                     (bbox[0] + cat_size[0], bbox[1] - 2), c, -1)
@@ -260,7 +258,7 @@ class Debugger(object):
       self.plt.show()
 
   def save_img(self, imgId='default', path='./cache/debug/'):
-    cv2.imwrite(path + '{}.png'.format(imgId), self.imgs[imgId])
+    cv2.imwrite(path + '{:08d}.png'.format(imgId), self.imgs[imgId])
     
   def save_all_imgs(self, path='./cache/debug/', prefix='', genID=False):
     if genID:
@@ -271,7 +269,7 @@ class Debugger(object):
       prefix=idx
       np.savetxt(path + '/id.txt', np.ones(1) * (idx + 1), fmt='%d')
     for i, v in self.imgs.items():
-      cv2.imwrite(path + '/{}{}.png'.format(prefix, i), v)
+      cv2.imwrite(path + '/{:08d}_{}.png'.format(prefix, i), v)
 
   def remove_side(self, img_id, img):
     if not (img_id in self.imgs):

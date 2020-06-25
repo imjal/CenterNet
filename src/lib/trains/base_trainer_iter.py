@@ -8,11 +8,21 @@ from progress.bar import Bar
 from models.data_parallel import DataParallel
 from utils.utils import AverageMeter
 import numpy as np
-from models.decode import ctdet_filt_centers
+from models.decode import ctdet_filt_centers, ctdet_decode
 from scipy.spatial import distance
 import pdb
+import gc
 
-
+def debug_gpu():
+  total_size = 0
+  for obj in gc.get_objects():
+    try:
+        if torch.is_tensor(obj) or (hasattr(obj, 'data') and torch.is_tensor(obj.data)):
+            print(type(obj), obj.size())
+            total_size += obj.element_size() * obj.numel()
+    except:
+        pass
+  print(total_size)
 
 class ModelWithLoss(torch.nn.Module):
   def __init__(self, model, loss):
@@ -46,7 +56,7 @@ class BaseTrainerIter(object):
         if isinstance(v, torch.Tensor):
           state[k] = v.to(device=device, non_blocking=True)
 
-  def get_ap(recalls, precisions):
+  def get_ap(self, recalls, precisions):
     # correct AP calculation
     # first append sentinel values at the end
     recalls = np.concatenate(([0.], recalls, [1.]))
@@ -67,42 +77,41 @@ class BaseTrainerIter(object):
 
   def mAP(self, batch, outputs, center_thresh):
     predictions = ctdet_filt_centers(outputs['hm'], outputs['reg']) # is this sorted? 
-    gt_inds = np.where(batch['hm'].to("cpu").numpy() == 1.0)
+    gt_inds = np.where(batch['hm'].to("cpu").numpy()[0] == 1.0)
+    gt_inds = np.stack(gt_inds, axis=1)
     gt_checked = np.zeros((len(gt_inds)))
-    filt_pred = []
-    for i in range(len(predictions)):
-      if predictions[i][2] >= center_thresh:
-        filt_pred += [predictions[i]]
 
-    nd = len(filt_pred)
-    tp = np.zeros((nd))
-    fp = np.zeros((nd))
-    for i, p in enumerate(filt_pred):
-      x = p[0]
-      y = p[1]
-      s = p[2]
-      min_dist = -np.inf
-      min_arg = -1
-      pdb.set_trace()
-      if len(gt_inds) > 0:
-        # dist from each point
-        dist = distance.cdist(gt_inds, np.array([[x, y]]), 'euclidean')
-        # take min & assign
-        min_dist = np.min(dist, axis = 0)
+    num_classes = batch['hm'].shape[1]
+    aps = np.zeros(num_classes)
+    predictions = predictions[predictions[:, 3] > center_thresh]
+    for j in range(num_classes):
+      filt_pred = predictions[predictions[:, 0] == j]
+      filt_gt = gt_inds[gt_inds[:, 0] == j]
+      nd = len(filt_pred)
+      tp = np.zeros((nd))
+      fp = np.zeros((nd))
+      gt_checked = np.zeros((len(filt_gt)))
+      if len(filt_gt) > 0:
+        if len(filt_pred) == 0:
+          continue
+        dist = distance.cdist(filt_gt[:, 1:3], filt_pred[:, 1:3], 'euclidean')
+        # min_dist = np.min(dist, axis = 0)
         min_arg = np.argmin(dist, axis = 0)
-        if gt_checked[min_arg] == 0:
-          tp[i] = 1.
-          gt_checked[jmax, t] = 1
-        else:
-          fp[i] = 1.
-    pdb.set_trace()
-    fp = np.cumsum(fp, axis=0)
-    tp = np.cumsum(tp, axis=0)
-    recalls = tp / float(len(gt_inds))
-    precisions = tp / np.maximum(tp + fp, np.finfo(np.float64).eps)
-    ap = get_ap(recalls, precisions)
-
-    return recalls, precisions, ap
+        for i in range(len(filt_pred)):
+          if gt_checked[min_arg[i]] == 0:
+            tp[i] = 1.
+            gt_checked[min_arg[i]] = 1
+          else:
+            fp[i] = 1.
+        fp = np.cumsum(fp, axis=0)
+        tp = np.cumsum(tp, axis=0)
+        recalls = tp / float(len(filt_gt))
+        precisions = tp / np.maximum(tp + fp, np.finfo(np.float64).eps)
+        aps[j] = self.get_ap(recalls, precisions)
+    # return recalls, precisions
+    if (aps!=0).sum() == 0:
+      return 0
+    return np.true_divide(aps.sum(),(aps!=0).sum())
 
   def meanIOU(self, batch, outputs):
     def convert2d(arr): # convert a one-hot into a thresholded array
@@ -149,6 +158,51 @@ class BaseTrainerIter(object):
         res["ACC-{}".format(name)] = 100 * acc[i]
     return miou
 
+  def segmeanIOU(self, batch, outputs):
+    def convert2d(arr): # convert a one-hot into a thresholded array
+      max_arr = arr.max(axis=0)
+      new_arr = arr.argmax(axis = 0) + 1
+      new_arr[max_arr < 0.1] = 0
+      return new_arr
+    # add to conf matrix for each image
+    pred = convert2d(outputs['seg'].detach().cpu().numpy()[0])
+    gt = batch['seg'].detach().cpu().numpy()[0][0]
+
+    N = outputs['seg'].detach().cpu().numpy()[0].shape[0] + 1
+    conf_matrix = np.bincount(N * pred.reshape(-1) + gt.reshape(-1), minlength=N ** 2).reshape(N, N)
+    
+    acc = np.full(N-1, np.nan, dtype=np.float)
+    iou = np.full(N-1, np.nan, dtype=np.float)
+    tp = conf_matrix.diagonal()[:-1].astype(np.float)
+    pos_gt = np.sum(conf_matrix[:-1, :-1], axis=0).astype(np.float)
+    class_weights = pos_gt / np.sum(pos_gt)
+    pos_pred = np.sum(conf_matrix[:-1, :-1], axis=1).astype(np.float)
+    acc_valid = pos_gt > 0
+    acc[acc_valid] = tp[acc_valid] / pos_gt[acc_valid]
+    iou_valid = (pos_gt + pos_pred) > 0
+    union = pos_gt + pos_pred - tp
+    iou[acc_valid] = tp[acc_valid] / union[acc_valid]
+    macc = np.sum(acc[acc_valid]) / np.sum(acc_valid)
+    miou = np.sum(iou[acc_valid]) / np.sum(iou_valid)
+    fiou = np.sum(iou[acc_valid] * class_weights[acc_valid])
+    pacc = np.sum(tp) / np.sum(pos_gt)
+
+    res = {}
+    class_names = [
+        "__ignore__",
+        "person", 
+        "4-wheeler", 
+        "2-wheeler"
+    ]
+    res["mIoU"] = 100 * miou
+    res["fwIoU"] = 100 * fiou
+    for i, name in enumerate(class_names):
+        res["IoU-{}".format(name)] = 100 * iou[i]
+    res["mACC"] = 100 * macc
+    res["pACC"] = 100 * pacc
+    for i, name in enumerate(class_names):
+        res["ACC-{}".format(name)] = 100 * acc[i]
+    return miou
 
   def run_epoch(self, phase, epoch, data_loader):
     model_with_loss = self.model_with_loss
@@ -175,6 +229,10 @@ class BaseTrainerIter(object):
     umax = 64
     a_thresh = 0.75
 
+    replay_buffer = [None] * opt.replay_samples
+    replay_idx = 0
+   
+
     def run_model(batch):
       for k in batch:
         if k != 'meta':
@@ -194,14 +252,34 @@ class BaseTrainerIter(object):
         break
       data_time.update(time.time() - end)
 
+      # replay_buffer[replay_idx] = batch.to("cpu")
+      # replay_idx = (replay_idx + 1) % opt.replay_samples
+      # if iter_id == 0:
+      #   for i in range(1, opt.replay_samples):
+      #     replay_buffer[i] = batch
+      #     replay_idx = (i + 1) % opt.replay_samples
+      
+      # batch_in = batch
+      # for i in range(1, opt.replay_samples):
+      #   for k, v in replay_buffer[i].items():
+      #     if k == 'meta':
+      #       for kk, vv in v.items():
+      #         batch_in[k][kk] = torch.cat([batch_in[k][kk], vv])
+      #     else:
+      #       batch_in[k] = torch.cat([batch_in[k], v])
+      # batch = batch_in
+
       # JITNet logic
       if iter_id % delta == 0:
         u = 0
         update = True
         while(update):
+          
           output, loss, loss_stats = run_model(batch)
           # save the stuff every iteration
-          acc = self.meanIOU(batch, output) # self.mAP(batch, output, self.opt.center_thresh)
+          # if opt.debug > 0:
+          #   self.debug(batch, output, iter_id)
+          acc = self.mAP(batch, output, self.opt.center_thresh) # self.meanIOU(batch, output) # self.segmeanIOU(batch, output) # 
           if u < umax and acc < a_thresh:
             print(acc)
             update_model(loss)
@@ -218,7 +296,7 @@ class BaseTrainerIter(object):
       batch_time.update(time.time() - end)
       end = time.time()
       if opt.debug > 0:
-            self.debug(batch, output, iter_id)
+        self.debug(batch, output, iter_id)
       
       # add a bunch of stuff to the bar to print
       Bar.suffix = '{phase}: [{0}][{1}/{2}]|Tot: {total:} |ETA: {eta:} '.format(

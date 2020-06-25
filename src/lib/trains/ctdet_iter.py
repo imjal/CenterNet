@@ -120,7 +120,6 @@ class CtdetTrainerIter(BaseTrainerIter):
       
       debugger.visualize_masks(seg_gt, img_id='out_mask_gt')
       debugger.visualize_masks(seg_pred, img_id='out_mask_pred')
-      import pdb; pdb.set_trace()
 
       if opt.debug == 4:
         debugger.save_all_imgs(opt.debug_dir, prefix='{}'.format(iter_id))

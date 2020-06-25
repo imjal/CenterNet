@@ -226,6 +226,11 @@ class opts(object):
     self.parser.add_argument('--eval_oracle_dep', action='store_true', 
                              help='use ground truth depth.')
 
+    # replay buffer params
+    self.parser.add_argument('--replay_samples', type=int, default=1,
+                             help='replay samples used from the buffer') 
+    
+
   def parse(self, args=''):
     if args == '':
       opt = self.parser.parse_args()
