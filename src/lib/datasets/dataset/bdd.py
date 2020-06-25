@@ -218,9 +218,6 @@ class BDDStream(data.IterableDataset):
       self.count = 0
       self.vid_i +=1
 
-    if self.count > 100:
-      self.count = 0
-
     img = self.cap[self.count]
     anns = self.pred_to_inst(self.detections[self.count])
     num_objs = min(len(anns), self.max_objs)
