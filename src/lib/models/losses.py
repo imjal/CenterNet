@@ -143,9 +143,10 @@ class CrossEntropy2d(nn.Module):
       n, c, h, w = predict.size()
       target = target.long()
       loss = F.cross_entropy(predict, target, reduction='none')
-      weight = weight.float() * 5
-      total_loss = (loss * weight).mean()
-      return total_loss
+      weight = weight.float() * 5.0
+      weight[weight == 0] = 1.0
+      weighted_loss = loss * weight
+      return torch.mean(weighted_loss)
 
 class RegLoss(nn.Module):
   '''Regression loss for an output tensor
