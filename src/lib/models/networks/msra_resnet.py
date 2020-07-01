@@ -132,7 +132,22 @@ class PoseResNet(nn.Module):
 
         for head in sorted(self.heads):
           num_output = self.heads[head]
-          if head_conv > 0:
+          if 'seg' in head: # attempted to make a JITNet Style Head, but needed to upsample twice at 2x
+            fc = nn.Sequential(nn.BatchNorm2d(256), nn.ReLU(inplace=True),
+                nn.Conv2d(256, 128, kernel_size=3, stride=1, padding=1, bias=False),
+                nn.BatchNorm2d(128), nn.ReLU(inplace=True),
+                nn.Conv2d(128, 128, kernel_size=3, stride=1, padding=1, bias=False),
+                nn.Upsample(scale_factor=2, mode='nearest'),
+                nn.BatchNorm2d(128), nn.ReLU(inplace=True),
+                nn.Conv2d(128, 64, kernel_size=3, stride=1, padding=1, bias=False),
+                nn.BatchNorm2d(64), nn.ReLU(inplace=True),
+                nn.Conv2d(64, 64, kernel_size=3, stride=1, padding=1, bias=False),
+                nn.Upsample(scale_factor=2, mode='nearest'),
+                nn.BatchNorm2d(64), nn.ReLU(inplace=True),
+                nn.Conv2d(64, 64, kernel_size=(1, 1), stride=1),
+                nn.BatchNorm2d(64), nn.ReLU(inplace=True),
+                nn.Conv2d(64, num_output, kernel_size= (1,1), stride=1, bias=False))
+          elif head_conv > 0:
             fc = nn.Sequential(
                 nn.Conv2d(256, head_conv,
                   kernel_size=3, padding=1, bias=True),
@@ -251,6 +266,10 @@ class PoseResNet(nn.Module):
                       if m.weight.shape[0] == self.heads[head]:
                           if 'hm' in head:
                               nn.init.constant_(m.bias, -2.19)
+                          elif 'seg' in head:
+                                nn.init.normal_(m.weight, std=0.001)
+                                if m.bias is not None:
+                                    nn.init.constant_(m.bias, 0)
                           else:
                               nn.init.normal_(m.weight, std=0.001)
                               nn.init.constant_(m.bias, 0)

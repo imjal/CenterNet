@@ -445,14 +445,19 @@ class DLASeg(nn.Module):
         for head in self.heads:
             classes = self.heads[head]
             if 'seg' in head: # attempted to make a JITNet Style Head, but needed to upsample twice at 2x
-                fc = nn.Sequential(nn.BatchNorm2d(64), 
+                fc = nn.Sequential(nn.BatchNorm2d(64), nn.ReLU(inplace=True),
                     nn.Conv2d(64, 64, kernel_size=3, stride=1, padding=1, bias=False),
+                    nn.BatchNorm2d(64), nn.ReLU(inplace=True),
                     nn.Conv2d(64, 64, kernel_size=3, stride=1, padding=1, bias=False),
                     nn.Upsample(scale_factor=2, mode='nearest'), 
+                    nn.BatchNorm2d(64), nn.ReLU(inplace=True),
                     nn.Conv2d(64, 64, kernel_size=3, stride=1, padding=1, bias=False),
+                    nn.BatchNorm2d(64), nn.ReLU(inplace=True),
                     nn.Conv2d(64, 64, kernel_size=3, stride=1, padding=1, bias=False),
                     nn.Upsample(scale_factor=2, mode='nearest'),
+                    nn.BatchNorm2d(64), nn.ReLU(inplace=True),
                     nn.Conv2d(64, 64, kernel_size=(1, 1), stride=1),
+                    nn.BatchNorm2d(64), nn.ReLU(inplace=True),
                     nn.Conv2d(64, classes, kernel_size= (1,1), stride=1, bias=False))
                 fill_fc_weights(fc)
             elif head_conv > 0:
