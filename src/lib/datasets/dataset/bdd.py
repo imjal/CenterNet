@@ -219,6 +219,7 @@ class BDDStream(data.IterableDataset):
       self.vid_i +=1
 
     img = self.cap[self.count]
+    # img = cv2.resize(img, None, fx=0.5, fy=0.5)
     anns = self.pred_to_inst(self.detections[self.count])
     num_objs = min(len(anns), self.max_objs)
 
@@ -294,12 +295,13 @@ class BDDStream(data.IterableDataset):
       pdb.set_trace()
 
     detect = self.detections[self.count]
-    seg_mask, weight_mask = batch_segmentation_masks(1, (height, width), np.array([detect['boxes']]), np.array([detect['classes']]), detect['masks'],
-        np.array([detect['scores']]), [len(detect['boxes'])], True, coco_class_groups, mask_threshold=0.5, box_threshold=self.opt.center_thresh, scale_boxes=False)
+    # seg_mask, weight_mask = batch_segmentation_masks(1, (height, width), np.array([detect['boxes']]), np.array([detect['classes']]), detect['masks'],
+        # np.array([detect['scores']]), [len(detect['boxes'])], True, coco_class_groups, mask_threshold=0.5, box_threshold=self.opt.center_thresh, scale_boxes=False)
     
     for k in range(num_objs):
       ann = anns[k]
       bbox = np.array(ann['bbox'], dtype=np.float32) # self._coco_box_to_bbox(ann['bbox'])
+      # bbox = bbox / 2
       cls_id = int(self.cat_ids[ann['category_id']])
       if flipped:
         bbox[[0, 2]] = width - bbox[[2, 0]] - 1
@@ -326,7 +328,10 @@ class BDDStream(data.IterableDataset):
           draw_dense_reg(dense_wh, hm.max(axis=0), ct_int, wh[k], radius)
         gt_det.append([ct[0] - w / 2, ct[1] - h / 2, 
                       ct[0] + w / 2, ct[1] + h / 2, 1, cls_id])
-    ret = {'input': inp, 'hm': hm, 'reg_mask': reg_mask, 'ind': ind, 'wh': wh, 'seg': seg_mask, 'weight_seg': weight_mask}
+    if opt.task == 'ctdet_semseg':
+          ret = {'input': inp, 'hm': hm, 'reg_mask': reg_mask, 'ind': ind, 'wh': wh, 'seg': seg_mask, 'weight_seg': weight_mask}
+    else:
+      ret = {'input': inp, 'hm': hm, 'reg_mask': reg_mask, 'ind': ind, 'wh': wh}
     if self.opt.dense_wh:
       hm_a = hm.max(axis=0, keepdims=True)
       dense_wh_mask = np.concatenate([hm_a, hm_a], axis=0)
