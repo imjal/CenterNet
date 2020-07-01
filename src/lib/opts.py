@@ -225,6 +225,15 @@ class opts(object):
                              help='use ground truth human joint local offset.')
     self.parser.add_argument('--eval_oracle_dep', action='store_true', 
                              help='use ground truth depth.')
+    
+    # jitnet
+    self.parser.add_argument('--adaptive', action='store_true', 
+                             help='use jitnet online adaptation, otherwise default to running pretrained model')
+    self.parser.add_argument('--delta_max', type=int, default=64, help='number of iterations to skip updating in stream')
+    self.parser.add_argument('--delta_min', type=int, default=8, help='number of iterations to skip updating in video stream')
+    self.parser.add_argument('--umax', type=int, default=64, help='max number of iterations to update')
+    self.parser.add_argument('--acc_metric', default='mAP', help= 'mAP | mIOU')
+    self.parser.add_argument('--acc_thresh', type=int, default=80, help='accuracy threshold on when to stop updating')
 
   def parse(self, args=''):
     if args == '':
