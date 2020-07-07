@@ -86,6 +86,8 @@ class opts(object):
                              help='learning rate for batch size 32.')
     self.parser.add_argument('--lr_step', type=str, default='90,120',
                              help='drop learning rate by 10.')
+    self.parser.add_argument('--optimizer', default='RMSProp', help='RMSProp| Adam')
+    self.parser.add_argument('--momentum', type=float, default=0.9, help='momentum for RMSProp')
     self.parser.add_argument('--num_epochs', type=int, default=140,
                              help='total training epochs.')
     self.parser.add_argument('--batch_size', type=int, default=32,
@@ -234,6 +236,10 @@ class opts(object):
     self.parser.add_argument('--umax', type=int, default=64, help='max number of iterations to update')
     self.parser.add_argument('--acc_metric', default='mAP', help= 'mAP | mIOU')
     self.parser.add_argument('--acc_thresh', type=int, default=80, help='accuracy threshold on when to stop updating')
+    self.parser.add_argument('--display_timing', action='store_true', 
+                             help='use jitnet online adaptation, otherwise default to running pretrained model')
+    self.parser.add_argument('--acc_collect', action='store_true', help='record accuracy on every iteration and display graph')
+
 
   def parse(self, args=''):
     if args == '':
