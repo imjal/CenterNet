@@ -205,8 +205,8 @@ class Debugger(object):
     cat_size = cv2.getTextSize(txt, font, 0.5, 2)[0]
     cv2.rectangle(self.imgs[img_id], (bbox[0], bbox[1]), (bbox[2], bbox[3]), c, 2)
     if show_txt:
-      cv2.rectangle(img, (int(bbox[0]), int(bbox[1] - cat_size[1] - 2)), (int(bbox[0] + cat_size[0]), int(bbox[1] - 2)), c, -1)
-      cv2.putText(img, txt, (int(bbox[0]), int(bbox[1] - 2)), 
+      cv2.rectangle(self.imgs[img_id], (int(bbox[0]), int(bbox[1] - cat_size[1] - 2)), (int(bbox[0] + cat_size[0]), int(bbox[1] - 2)), c, -1)
+      cv2.putText(self.imgs[img_id], txt, (int(bbox[0]), int(bbox[1] - 2)), 
                   font, 0.5, (0, 0, 0), thickness=1, lineType=cv2.LINE_AA)
     # self.imgs[img_id][:, :, :] = img
 
