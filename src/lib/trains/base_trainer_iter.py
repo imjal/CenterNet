@@ -185,12 +185,13 @@ class BaseTrainerIter(object):
     ret = {k: v.avg for k, v in avg_loss_stats.items()}
     ret['time'] = bar.elapsed_td.total_seconds() / 60.
     save_dict = {}
-    plt.scatter(*zip(*update_lst))
-    plt.xlabel('iteration')
-    plt.ylabel('number of updates')
-    plt.savefig(opt.save_dir + '/update_frequency.png')
-    save_dict['updates'] = update_lst
-    plt.clf()
+    if opt.adaptive:
+      plt.scatter(*zip(*update_lst))
+      plt.xlabel('iteration')
+      plt.ylabel('number of updates')
+      plt.savefig(opt.save_dir + '/update_frequency.png')
+      save_dict['updates'] = update_lst
+      plt.clf()
     if opt.acc_collect:
       plt.scatter(*zip(*acc_lst))
       plt.xlabel('iteration')
