@@ -36,7 +36,7 @@ class mAP(Metric):
         return ap
 
 class centermAP(mAP):
-    def get_score(self, batch, outputs):
+    def get_score(self, batch, outputs, iter_id):
         predictions = ctdet_filt_centers(outputs['hm'], outputs['reg']) # is this sorted? 
         gt_inds = np.where(batch['hm'].to("cpu").numpy() == 1.0)
         gt_checked = np.zeros((len(gt_inds)))
@@ -129,13 +129,13 @@ class regmAP(mAP):
             ap[t] = self.get_ap(recalls[:, t], precisions[:, t])
         return recalls, precisions, ap
 
-    def get_score(self, batch, output, center_thresh, u):
+    def get_score(self, batch, output, u):
         dets = ctdet_decode( output['hm'], output['wh'], reg=output['reg'], cat_spec_wh=self.opt.cat_spec_wh, K=self.opt.K)
         predictions = dets.detach().cpu().numpy().reshape(1, -1, dets.shape[2])
         predictions[:, :, :4] *= self.opt.down_ratio
         dets_gt = batch['meta']['gt_det'].numpy().reshape(1, -1, dets.shape[2])
-        
-        dets_gt = copy.deepcopy(dets_gt[:, :, :4] * self.opt.down_ratio)
+        dets_gt = copy.deepcopy(dets_gt)
+        dets_gt[:, :, :4] *= self.opt.down_ratio
 
         # debatch
         predictions = predictions[0]
@@ -146,7 +146,7 @@ class regmAP(mAP):
 
         num_gts = len(dets_gt)
         image_gt_checked = np.zeros((num_gts, len(thresholds)))
-        filt_pred = predictions[predictions[:,4] >= center_thresh]
+        filt_pred = predictions[predictions[:,4] >= self.center_thresh]
         filt = np.zeros(self.opt.num_classes)
         for i in range(self.opt.num_classes):
             filt_pred_class = filt_pred[filt_pred[:, 5] == i]
