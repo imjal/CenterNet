@@ -12,6 +12,8 @@ from utils.metrics import get_metric
 from scipy.spatial import distance
 import pdb
 import copy
+import pickle
+import matplotlib.pyplot as plt
 
 
 
@@ -89,13 +91,17 @@ class BaseTrainerIter(object):
       start_time = time.time()
       if phase == 'train': # if training, update
         self.optimizer.zero_grad()
+        # loss.register_hook(lambda grad: print(grad))
         loss.backward()
+        # pdb.set_trace()
         self.optimizer.step()
       current_time = time.time()
       update_time = (current_time - start_time)
       return update_time
     
     data_iter = iter(data_loader)
+    update_lst = []
+    acc_lst = []
     while True:
       load_time, total_model_time, model_time, update_time, tot_time, display_time = 0, 0, 0, 0, 0, 0
       start_time = time.time()
@@ -127,10 +133,21 @@ class BaseTrainerIter(object):
           else:
             delta = max(delta_min, delta / 2)
           model_time = total_model_time / u
-        else: 
+          update_lst += [(iter_id, u)]
+          acc_lst += [(iter_id, acc)]
+        else:
+          update_lst += [(iter_id, 0)]
           output, loss, loss_stats, model_time = run_model(batch)
+          if opt.acc_collect:
+            acc = metric.get_score(batch, output, 0)
+            print(acc)
+            acc_lst+=[(iter_id, acc)]
       else:
         output, loss, loss_stats, model_time = run_model(batch)
+        if opt.acc_collect:
+          acc = metric.get_score(batch, output, 0)
+          print(acc)
+          acc_lst+=[(iter_id, acc)]
 
       display_start = time.time()
       if opt.debug > 0:
@@ -155,8 +172,9 @@ class BaseTrainerIter(object):
           print('{}/{}| {}'.format(opt.task, opt.exp_id, Bar.suffix))
       else:
         bar.next()
-      time_str = 'total {:.3f}s | load {:.3f}s | model_time {:.3f}s | update_time {:.3f}s | display {:.3f}s'.format(tot_time, load_time, model_time, update_time, display_time)
-      print(time_str)
+      if opt.display_timing:
+        time_str = 'total {:.3f}s | load {:.3f}s | model_time {:.3f}s | update_time {:.3f}s | display {:.3f}s'.format(tot_time, load_time, model_time, update_time, display_time)
+        print(time_str)
       
       if opt.test:
         self.save_result(output, batch, results)
@@ -166,6 +184,22 @@ class BaseTrainerIter(object):
     bar.finish()
     ret = {k: v.avg for k, v in avg_loss_stats.items()}
     ret['time'] = bar.elapsed_td.total_seconds() / 60.
+    save_dict = {}
+    plt.scatter(*zip(*update_lst))
+    plt.xlabel('iteration')
+    plt.ylabel('number of updates')
+    plt.savefig(opt.save_dir + '/update_frequency.png')
+    save_dict['updates'] = update_lst
+    plt.clf()
+    if opt.acc_collect:
+      plt.scatter(*zip(*acc_lst))
+      plt.xlabel('iteration')
+      plt.ylabel('mAP')
+      plt.savefig(opt.save_dir + '/acc_figure.png')
+      save_dict['acc'] = acc_lst
+    
+    # save dict
+    pickle.dump(save_dict, open(opt.save_dir + '/raw_save_dict.pkl', 'wb'))
     return ret, results
   
   def debug(self, batch, output, iter_id):
