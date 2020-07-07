@@ -155,7 +155,7 @@ class BDDStream(data.IterableDataset):
     self.vid_i = 0
     self.length = None
     self.count = 0
-    self.loop = True # make into variable later
+    self.loop = False # make into variable later
 
     self.cap = None
     self.rate = None
@@ -207,7 +207,9 @@ class BDDStream(data.IterableDataset):
   def __next__(self):
     if self.cap is None or self.count >= self.length:
       if self.cap is not None and self.vid_i == self.num_videos and self.loop:
-          self.vid_i = 0
+        self.vid_i = 0
+      elif self.cap is not None and self.vid_i == self.num_videos:
+        raise StopIteration
       self.cap = skvideo.io.vread(self.video_paths[self.vid_i])
       metadata = skvideo.io.ffprobe(self.video_paths[self.vid_i])
       fr_lst = metadata['video']['@avg_frame_rate'].split('/')
@@ -295,8 +297,9 @@ class BDDStream(data.IterableDataset):
       pdb.set_trace()
 
     detect = self.detections[self.count]
-    # seg_mask, weight_mask = batch_segmentation_masks(1, (height, width), np.array([detect['boxes']]), np.array([detect['classes']]), detect['masks'],
-        # np.array([detect['scores']]), [len(detect['boxes'])], True, coco_class_groups, mask_threshold=0.5, box_threshold=self.opt.center_thresh, scale_boxes=False)
+    if self.opt.task == 'ctdet_semseg':
+      seg_mask, weight_mask = batch_segmentation_masks(1, (height, width), np.array([detect['boxes']]), np.array([detect['classes']]), detect['masks'],
+          np.array([detect['scores']]), [len(detect['boxes'])], True, coco_class_groups, mask_threshold=0.5, box_threshold=self.opt.center_thresh, scale_boxes=False)
     
     for k in range(num_objs):
       ann = anns[k]
@@ -328,7 +331,7 @@ class BDDStream(data.IterableDataset):
           draw_dense_reg(dense_wh, hm.max(axis=0), ct_int, wh[k], radius)
         gt_det.append([ct[0] - w / 2, ct[1] - h / 2, 
                       ct[0] + w / 2, ct[1] + h / 2, 1, cls_id])
-    if opt.task == 'ctdet_semseg':
+    if self.opt.task == 'ctdet_semseg':
           ret = {'input': inp, 'hm': hm, 'reg_mask': reg_mask, 'ind': ind, 'wh': wh, 'seg': seg_mask, 'weight_seg': weight_mask}
     else:
       ret = {'input': inp, 'hm': hm, 'reg_mask': reg_mask, 'ind': ind, 'wh': wh}
