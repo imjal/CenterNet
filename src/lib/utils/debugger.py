@@ -203,16 +203,12 @@ class Debugger(object):
     txt = '{}{:.1f}'.format(self.names[cat], conf)
     font = cv2.FONT_HERSHEY_SIMPLEX
     cat_size = cv2.getTextSize(txt, font, 0.5, 2)[0]
-    cv2.rectangle(
-      self.imgs[img_id], (bbox[0], bbox[1]), (bbox[2], bbox[3]), c, 2)
+    cv2.rectangle(self.imgs[img_id], (bbox[0], bbox[1]), (bbox[2], bbox[3]), c, 2)
     if show_txt:
-      if type(bbox[1]) != np.int32:
-        import pdb; pdb.set_trace()
-      cv2.rectangle(self.imgs[img_id],
-                    (bbox[0], bbox[1] - cat_size[1] - 2),
-                    (bbox[0] + cat_size[0], bbox[1] - 2), c, -1)
-      cv2.putText(self.imgs[img_id], txt, (bbox[0], bbox[1] - 2), 
+      cv2.rectangle(img, (int(bbox[0]), int(bbox[1] - cat_size[1] - 2)), (int(bbox[0] + cat_size[0]), int(bbox[1] - 2)), c, -1)
+      cv2.putText(img, txt, (int(bbox[0]), int(bbox[1] - 2)), 
                   font, 0.5, (0, 0, 0), thickness=1, lineType=cv2.LINE_AA)
+    # self.imgs[img_id][:, :, :] = img
 
   def add_coco_hp(self, points, img_id='default'): 
     points = np.array(points, dtype=np.int32).reshape(self.num_joints, 2)
@@ -268,10 +264,10 @@ class Debugger(object):
         idx = int(np.loadtxt(path + '/id.txt'))
       except:
         idx = 0
-      prefix=idx
+      prefix=int(idx)
       np.savetxt(path + '/id.txt', np.ones(1) * (idx + 1), fmt='%d')
     for i, v in self.imgs.items():
-      cv2.imwrite(path + '/{:08d}_{}.png'.format(prefix, i), v)
+      cv2.imwrite(path + '/{:08d}_{}.png'.format(int(prefix), i), v)
 
   def remove_side(self, img_id, img):
     if not (img_id in self.imgs):
