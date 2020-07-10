@@ -54,7 +54,7 @@ def main(opt):
   )
 
   if opt.dataset == 'bddstream':
-    train_loader = torch.utils.data.DataLoader(Dataset(opt, 'train'), pin_memory=True)
+    train_loader = torch.utils.data.DataLoader(Dataset(opt, 'train')) # , pin_memory=True)
   else:
     train_loader = torch.utils.data.DataLoader(
         Dataset(opt, 'train'), 

@@ -7,7 +7,7 @@ import cv2
 from .ddd_utils import compute_box_3d, project_to_image, draw_box_3d
 
 class Debugger(object):
-  def __init__(self, ipynb=False, theme='black', 
+  def __init__(self, opt, ipynb=False, theme='black', 
                num_classes=-1, dataset=None, down_ratio=4):
     self.ipynb = ipynb
     if not self.ipynb:
@@ -64,8 +64,11 @@ class Debugger(object):
       self.H = 375
     elif num_classes==10 or dataset=='bdd':
       self.names = bdd_class_name
-    elif num_classes==3 or dataset=='bddstream': 
-      self.names = coco2bdd_class_names
+    elif num_classes==3 or dataset=='bddstream':
+      if not opt.adaptive:
+         self.names = coco_class_name
+      else:
+        self.names = coco2bdd_class_names
     num_classes = len(self.names)
     self.down_ratio=down_ratio
     # for bird view
