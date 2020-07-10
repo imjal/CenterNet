@@ -7,6 +7,6 @@ python main.py ctdet_stream  --exp_id dla34_pt_mAP80_thresh6_$1 --batch_size 1 -
     --input_h 736 --input_w 1280 --input_res 1280 \
     --not_rand_crop --shift 0 --scale 0 --flip 0 --no_color_aug \
     --debug 4 --debugger_theme white \
-    --load_model /home/jl5/CenterNet/models/ctdet_coco_dla_2x.pth \
-    --display_timing --adaptive --center_thresh 0.6 --vis_thresh 0.6 --lr $1 --momentum 0.9 --acc_collect
+    --load_model /home/jl5/CenterNet/models/ctdet_coco_dla_2x.pth --umax 16 \
+    --display_timing --adaptive --center_thresh 0.6 --vis_thresh 0.6 --lr 0.0001 --momentum 0.9 --acc_collect --vidstream cv2
     # --not_rand_crop --test --load_mbuodel /home/jl5/CenterNet/exp/ctdet/bdd_dla_2x_overfit/model_last.pth
