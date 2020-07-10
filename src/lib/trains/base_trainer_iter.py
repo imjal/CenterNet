@@ -23,8 +23,10 @@ class ModelWithLoss(torch.nn.Module):
     self.model = model
     self.loss = loss
   
-  def forward(self, batch):
+  def forward(self, batch, is_update=True):
     outputs = self.model(batch['input'])
+    if not is_update:
+      return outputs
     loss, loss_stats = self.loss(outputs, batch)
     return outputs[-1], loss, loss_stats
 
@@ -76,8 +78,9 @@ class BaseTrainerIter(object):
     metric = get_metric(opt)
     iter_id = 0 
 
-    def run_model(batch):
+    def train_model(batch):
       start_time = time.time()
+      model_with_loss.train()
       for k in batch:
         if k != 'meta':
           batch[k] = batch[k].to(device=opt.device, non_blocking=True) # send batch to gpu
@@ -86,14 +89,23 @@ class BaseTrainerIter(object):
       current_time = time.time()
       model_time = (current_time - start_time)
       return output, loss, loss_stats, model_time
+
+    def run_model(batch):
+      start_time = time.time()
+      model_with_loss.eval()
+      for k in batch:
+        if k != 'meta':
+          batch[k] = batch[k].to(device=opt.device, non_blocking=True) # send batch to gpu
+      output = model_with_loss(batch, is_update=False) # run model
+      current_time = time.time()
+      model_time = (current_time - start_time)
+      return output[0], model_time
     
     def update_model(loss):
       start_time = time.time()
       if phase == 'train': # if training, update
         self.optimizer.zero_grad()
-        # loss.register_hook(lambda grad: print(grad))
         loss.backward()
-        # pdb.set_trace()
         self.optimizer.step()
       current_time = time.time()
       update_time = (current_time - start_time)
@@ -110,6 +122,7 @@ class BaseTrainerIter(object):
         batch = next(data_iter)
       except StopIteration:
         break
+      
       loaded_time = time.time()
       load_time += (loaded_time - start_time)
 
@@ -118,7 +131,7 @@ class BaseTrainerIter(object):
           u = 0
           update = True
           while(update):
-            output, loss, loss_stats, tmp_model_time = run_model(batch)
+            output, loss, loss_stats, tmp_model_time = train_model(batch)
             total_model_time += tmp_model_time
             # save the stuff every iteration
             acc = metric.get_score(batch, output, u)
@@ -137,15 +150,15 @@ class BaseTrainerIter(object):
           acc_lst += [(iter_id, acc)]
         else:
           update_lst += [(iter_id, 0)]
-          output, loss, loss_stats, model_time = run_model(batch)
+          output, model_time = run_model(batch)
           if opt.acc_collect:
             acc = metric.get_score(batch, output, 0)
             print(acc)
             acc_lst+=[(iter_id, acc)]
       else:
-        output, loss, loss_stats, model_time = run_model(batch)
+        output, model_time = run_model(batch)
         if opt.acc_collect:
-          acc = metric.get_score(batch, output, 0)
+          acc = metric.get_score(batch, output, 0, is_baseline=True)
           print(acc)
           acc_lst+=[(iter_id, acc)]
 
@@ -163,22 +176,24 @@ class BaseTrainerIter(object):
       Bar.suffix = '{phase}: [{0}][{1}/{2}]|Tot: {total:} |ETA: {eta:} '.format(
         epoch, iter_id, num_iters, phase=phase,
         total=bar.elapsed_td, eta=bar.eta_td) # add to the progress bar
-      for l in avg_loss_stats:
-        avg_loss_stats[l].update(
-          loss_stats[l].mean().item(), batch['input'].size(0))
-        Bar.suffix = Bar.suffix + '|{} {:.4f} '.format(l, avg_loss_stats[l].avg) # update average loss stats
+      # if opt.adaptive:
+      #   for l in avg_loss_stats:
+      #     avg_loss_stats[l].update(
+      #       loss_stats[l].mean().item(), batch['input'].size(0))
+      #     Bar.suffix = Bar.suffix + '|{} {:.4f} '.format(l, avg_loss_stats[l].avg) # update average loss stats
+      # del loss, loss_stats
       if opt.print_iter > 0:
         if iter_id % opt.print_iter == 0:
           print('{}/{}| {}'.format(opt.task, opt.exp_id, Bar.suffix))
       else:
         bar.next()
       if opt.display_timing:
-        time_str = 'total {:.3f}s | load {:.3f}s | model_time {:.3f}s | update_time {:.3f}s | display {:.3f}s'.format(tot_time, load_time, model_time, update_time, display_time)
+        time_str = 'total {:.3f}s| load {:.3f}s | model_time {:.3f}s | update_time {:.3f}s | display {:.3f}s'.format(tot_time, load_time, model_time, update_time, display_time)
         print(time_str)
       
       if opt.test:
         self.save_result(output, batch, results)
-      del output, loss, loss_stats
+      del output
       iter_id+=1
     
     bar.finish()
@@ -198,6 +213,10 @@ class BaseTrainerIter(object):
       plt.ylabel('mAP')
       plt.savefig(opt.save_dir + '/acc_figure.png')
       save_dict['acc'] = acc_lst
+    if opt.adaptive and opt.acc_collect:
+      x, y = zip(*filter(lambda x: x[1] > 0, update_lst))
+      plt.scatter(x, y, c='r', marker='o')
+      plt.xlabel('iteration')
     
     # save dict
     pickle.dump(save_dict, open(opt.save_dir + '/raw_save_dict.pkl', 'wb'))
