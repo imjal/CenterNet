@@ -4,6 +4,7 @@ from __future__ import print_function
 
 import torch
 import numpy as np
+import time
 
 from models.losses import FocalLoss, RegL1Loss, RegLoss, NormRegL1Loss, RegWeightedL1Loss, CrossEntropy2d
 from models.decode import ctdet_decode
@@ -45,7 +46,6 @@ class CtdetLoss(torch.nn.Module):
           batch['reg'].detach().cpu().numpy(), 
           batch['ind'].detach().cpu().numpy(), 
           output['reg'].shape[3], output['reg'].shape[2])).to(opt.device)
-
       hm_loss += self.crit(output['hm'], batch['hm']) / opt.num_stacks
       if opt.wh_weight > 0:
         if opt.dense_wh:
@@ -98,8 +98,7 @@ class CtdetTrainerIter(BaseTrainerIter):
       seg_pred = output['seg'].max(1)[1].squeeze_(1).squeeze_(0).cpu().numpy()
 
     for i in range(1):
-      debugger = Debugger(
-        dataset=opt.dataset, ipynb=(opt.debug==3), theme=opt.debugger_theme)
+      debugger = Debugger(opt, dataset=opt.dataset, ipynb=(opt.debug==3), theme=opt.debugger_theme)
       img = batch['input'][i].detach().cpu().numpy().transpose(1, 2, 0)
       img = np.clip(((
         img * opt.std + opt.mean) * 255.), 0, 255).astype(np.uint8)

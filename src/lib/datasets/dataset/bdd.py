@@ -22,6 +22,7 @@ from lib.datasets.dataset.eval_bdd import evaluate_detection
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 from PIL import Image
+import time
 
 from lib.datasets.dataset.label_mappings import coco2bdd_class_groups, bdd_class_groups, combined_label_names, detectron_classes, coco_class_groups, get_remap
 
@@ -73,6 +74,7 @@ class BDD(data.Dataset):
     ], dtype=np.float32)
     self.split = split
     self.opt = opt
+    
 
     print('==> initializing BDD {} data.'.format(_ann_name[split]))
     self.coco = coco.COCO(self.annot_path)
@@ -149,6 +151,8 @@ class BDDStream(data.IterableDataset):
 
     self.split = split
     self.opt = opt
+    if not opt.adaptive:
+      self.num_classes = 80
     self.video_paths = opt.vid_paths
     self.num_videos = len(opt.vid_paths)
     self.annotation_path = opt.ann_paths
@@ -201,27 +205,52 @@ class BDDStream(data.IterableDataset):
       inst.append(ann)
     return inst
 
-  # def __len__(self):
-  #   return 10000000
+  def _frame_from_video(self, video):
+    while video.isOpened():
+        success, frame = video.read()
+        if success:
+            yield frame
+        else:
+            break
 
   def __next__(self):
+    load_vid_time, img_transform_time, create_heatmap_time = 0, 0, 0
+    start = time.time()
     if self.cap is None or self.count >= self.length:
       if self.cap is not None and self.vid_i == self.num_videos and self.loop:
         self.vid_i = 0
       elif self.cap is not None and self.vid_i == self.num_videos:
         raise StopIteration
-      self.cap = skvideo.io.vread(self.video_paths[self.vid_i])
-      metadata = skvideo.io.ffprobe(self.video_paths[self.vid_i])
-      fr_lst = metadata['video']['@avg_frame_rate'].split('/')
-      self.rate = int(fr_lst[0])/int(fr_lst[1])
-      self.length = int(metadata['video']['@nb_frames'])
+      if self.opt.vidstream == 'skvideo':
+        self.cap = skvideo.io.vread(self.video_paths[self.vid_i])
+        metadata = skvideo.io.ffprobe(self.video_paths[self.vid_i])
+        fr_lst = metadata['video']['@avg_frame_rate'].split('/')
+        self.rate = int(fr_lst[0])/int(fr_lst[1])
+        self.length = int(metadata['video']['@nb_frames'])
+      else:
+        self.cap = cv2.VideoCapture(self.video_paths[self.vid_i])
+        width = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        height = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        self.rate = self.cap.get(cv2.CAP_PROP_FPS)
+        self.length = int(self.cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        self.frame_gen = self._frame_from_video(self.cap)
+      
       self.detections = pickle.load(open(self.annotation_path[self.vid_i], 'rb'))
       self.num_frames = len(self.detections)
       self.count = 0
       self.vid_i +=1
+    end_load_vid = time.time()
+    load_vid_time = end_load_vid - start
 
-    img = self.cap[self.count]
-    # img = cv2.resize(img, None, fx=0.5, fy=0.5)
+    # load image depending on stream
+    start_resize = time.time()
+    if self.opt.vidstream == 'skvideo':
+      img = self.cap[self.count]
+    else:
+      original_img = next(self.frame_gen)
+      img = cv2.resize(original_img, (1280, 720))
+
+    start_img_transform = time.time()
     anns = self.pred_to_inst(self.detections[self.count])
     num_objs = min(len(anns), self.max_objs)
 
@@ -254,18 +283,25 @@ class BDDStream(data.IterableDataset):
         flipped = True
         img = img[:, ::-1, :]
         c[0] =  width - c[0] - 1
-          
 
+      # send to gpu
       trans_input = get_affine_transform(
         c, s, 0, [input_w, input_h])
-      inp = cv2.warpAffine(img, trans_input, 
+      inp = cv2.warpAffine(img, trans_input,
                           (input_w, input_h),
                           flags=cv2.INTER_LINEAR)
-      inp = (inp.astype(np.float32) / 255.)
-      if self.split == 'train' and not self.opt.no_color_aug:
-        color_aug(self._data_rng, inp, self._eig_val, self._eig_vec)
-      inp = (inp - self.mean) / self.std
-      inp = inp.transpose(2, 0, 1)
+      inp = torch.from_numpy(inp).cuda()
+      inp = (inp.float() / 255.)
+      
+      # if self.split == 'train' and not self.opt.no_color_aug:
+      #   color_aug(self._data_rng, inp, self._eig_val, self._eig_vec)
+      
+      inp = (inp - torch.from_numpy(self.mean).cuda()) / torch.from_numpy(self.std).cuda()
+      inp = inp.permute(2, 0, 1)
+
+    end_img_transform = time.time()
+    img_transform_time = end_img_transform - start_img_transform
+
 
     output_h = input_h // self.opt.down_ratio
     output_w = input_w // self.opt.down_ratio
@@ -290,21 +326,30 @@ class BDDStream(data.IterableDataset):
       fig,ax = plt.subplots(1)
       ax.imshow(im)
       for i in range(num_objs):
-        bbox = anns[i]['bbox']
+        bbox = np.array(anns[i]['bbox'], dtype=np.int32)
+        bbox = bbox / 3
         rect = patches.Rectangle((bbox[0],bbox[1]),bbox[2]-bbox[0],bbox[3]-bbox[1],linewidth=1,edgecolor='r',facecolor='none')
         ax.add_patch(rect)
       plt.savefig('/home/jl5/CenterNet/tmp.png')
       pdb.set_trace()
 
+
     detect = self.detections[self.count]
     if self.opt.task == 'ctdet_semseg':
-      seg_mask, weight_mask = batch_segmentation_masks(1, (height, width), np.array([detect['boxes']]), np.array([detect['classes']]), detect['masks'],
+      seg_mask, weight_mask = batch_segmentation_masks(1, (720*3, 1280 * 3), np.array([detect['boxes']]), np.array([detect['classes']]), detect['masks'],
           np.array([detect['scores']]), [len(detect['boxes'])], True, coco_class_groups, mask_threshold=0.5, box_threshold=self.opt.center_thresh, scale_boxes=False)
+      unbatch_seg = seg_mask[0].astype(np.uint8)
+      unbatch_weight = weight_mask[0].astype(np.uint8)
+      seg_mask = np.expand_dims(cv2.resize(unbatch_seg, (1280, 736)), axis=0).astype(np.int32)
+      weight_mask = np.expand_dims(cv2.resize(unbatch_weight, (1280, 736)), axis = 0).astype(bool)
+
     
+    start_detect = time.time()
+
     for k in range(num_objs):
       ann = anns[k]
       bbox = np.array(ann['bbox'], dtype=np.float32) # self._coco_box_to_bbox(ann['bbox'])
-      # bbox = bbox / 2
+      bbox = bbox / 3 # if need to downsample 
       cls_id = int(self.cat_ids[ann['category_id']])
       if flipped:
         bbox[[0, 2]] = width - bbox[[2, 0]] - 1
@@ -351,6 +396,10 @@ class BDDStream(data.IterableDataset):
       meta = {'c': c, 's': s, 'gt_det': gt_det, 'img_id': self.count}
       ret['meta'] = meta
     self.count+=1
+
+    end_detect_time = time.time()
+    create_heatmap_time = end_detect_time - start_detect
+    # print("load vid {:.4f} | i,mg transform {:.4f} | create instance {:.4f} \n".format(load_vid_time, img_transform_time, create_heatmap_time))
     return ret
   
   def reset(self):

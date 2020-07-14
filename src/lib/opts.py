@@ -239,7 +239,7 @@ class opts(object):
     self.parser.add_argument('--display_timing', action='store_true', 
                              help='use jitnet online adaptation, otherwise default to running pretrained model')
     self.parser.add_argument('--acc_collect', action='store_true', help='record accuracy on every iteration and display graph')
-
+    self.parser.add_argument('--vidstream', default='skvideo', help='skvideo | cv2')
 
   def parse(self, args=''):
     if args == '':
@@ -342,6 +342,8 @@ class opts(object):
       if opt.reg_offset:
         opt.heads.update({'reg': 2})
     elif opt.task == 'ctdet_stream':
+      if not opt.adaptive:
+        opt.num_classes = 80
       opt.heads = {'hm': opt.num_classes,
                    'wh': 2 if not opt.cat_spec_wh else 2 * opt.num_classes}
       if opt.reg_offset:

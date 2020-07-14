@@ -3,6 +3,7 @@ from models.decode import ctdet_filt_centers, ctdet_decode
 import pdb
 from abc import ABC, abstractmethod
 import copy
+from lib.datasets.dataset.label_mappings import coco_class_groups, get_remap, bdd_class_groups
 
 class Metric(ABC):
     def __init__(self, opt):
@@ -129,7 +130,7 @@ class regmAP(mAP):
             ap[t] = self.get_ap(recalls[:, t], precisions[:, t])
         return recalls, precisions, ap
 
-    def get_score(self, batch, output, u):
+    def get_score(self, batch, output, u, is_baseline=False):
         dets = ctdet_decode( output['hm'], output['wh'], reg=output['reg'], cat_spec_wh=self.opt.cat_spec_wh, K=self.opt.K)
         predictions = dets.detach().cpu().numpy().reshape(1, -1, dets.shape[2])
         predictions[:, :, :4] *= self.opt.down_ratio
@@ -147,6 +148,13 @@ class regmAP(mAP):
         num_gts = len(dets_gt)
         image_gt_checked = np.zeros((num_gts, len(thresholds)))
         filt_pred = predictions[predictions[:,4] >= self.center_thresh]
+        if is_baseline: # make instance into a 3 class instance for bdd relabeled gt
+            d_map = get_remap(coco_class_groups)
+            pred = filt_pred[:, 5].astype(np.int64)
+            filt_pred = filt_pred[np.isin(pred, np.array(list(d_map.keys())))]
+            if len(filt_pred) != 0: 
+                filt_pred[:, 5] = np.vectorize(d_map.get)(filt_pred[:, 5])
+
         filt = np.zeros(self.opt.num_classes)
         for i in range(self.opt.num_classes):
             filt_pred_class = filt_pred[filt_pred[:, 5] == i]
