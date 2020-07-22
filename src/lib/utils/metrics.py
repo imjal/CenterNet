@@ -5,6 +5,56 @@ from abc import ABC, abstractmethod
 import copy
 from lib.datasets.dataset.label_mappings import coco_class_groups, get_remap, bdd_class_groups
 
+def ret_categories():
+    return [{'supercategory': 'person', 'id': 1, 'name': 'person'}, 
+    {'supercategory': 'vehicle', 'id': 2, 'name': 'bicycle'}, {'supercategory': 'vehicle', 'id': 3, 'name': 'car'},
+    {'supercategory': 'vehicle', 'id': 4, 'name': 'motorcycle'}, {'supercategory': 'vehicle', 'id': 5, 'name': 'airplane'}, 
+    {'supercategory': 'vehicle', 'id': 6, 'name': 'bus'}, {'supercategory': 'vehicle', 'id': 7, 'name': 'train'}, 
+    {'supercategory': 'vehicle', 'id': 8, 'name': 'truck'}, {'supercategory': 'vehicle', 'id': 9, 'name': 'boat'}, 
+    {'supercategory': 'outdoor', 'id': 10, 'name': 'traffic light'}, {'supercategory': 'outdoor', 'id': 11, 'name': 'fire hydrant'}, {'supercategory': 'outdoor', 'id': 13, 'name': 'stop sign'}, {'supercategory': 'outdoor', 'id': 14, 'name': 'parking meter'}, {'supercategory': 'outdoor', 'id': 15, 'name': 'bench'}, {'supercategory': 'animal', 'id': 16, 'name': 'bird'}, {'supercategory': 'animal', 'id': 17, 'name': 'cat'}, {'supercategory': 'animal', 'id': 18, 'name': 'dog'}, {'supercategory': 'animal', 'id': 19, 'name': 'horse'}, {'supercategory': 'animal', 'id': 20, 'name': 'sheep'}, {'supercategory': 'animal', 'id': 21, 'name': 'cow'}, {'supercategory': 'animal', 'id': 22, 'name': 'elephant'}, {'supercategory': 'animal', 'id': 23, 'name': 'bear'}, {'supercategory': 'animal', 'id': 24, 'name': 'zebra'}, {'supercategory': 'animal', 'id': 25, 'name': 'giraffe'}, {'supercategory': 'accessory', 'id': 27, 'name': 'backpack'}, {'supercategory': 'accessory', 'id': 28, 'name': 'umbrella'}, {'supercategory': 'accessory', 'id': 31, 'name': 'handbag'}, {'supercategory': 'accessory', 'id': 32, 'name': 'tie'}, {'supercategory': 'accessory', 'id': 33, 'name': 'suitcase'}, {'supercategory': 'sports', 'id': 34, 'name': 'frisbee'}, {'supercategory': 'sports', 'id': 35, 'name': 'skis'}, {'supercategory': 'sports', 'id': 36, 'name': 'snowboard'}, {'supercategory': 'sports', 'id': 37, 'name': 'sports ball'}, {'supercategory': 'sports', 'id': 38, 'name': 'kite'}, {'supercategory': 'sports', 'id': 39, 'name': 'baseball bat'}, {'supercategory': 'sports', 'id': 40, 'name': 'baseball glove'}, {'supercategory': 'sports', 'id': 41, 'name': 'skateboard'}, {'supercategory': 'sports', 'id': 42, 'name': 'surfboard'}, {'supercategory': 'sports', 'id': 43, 'name': 'tennis racket'}, {'supercategory': 'kitchen', 'id': 44, 'name': 'bottle'}, {'supercategory': 'kitchen', 'id': 46, 'name': 'wine glass'}, {'supercategory': 'kitchen', 'id': 47, 'name': 'cup'}, {'supercategory': 'kitchen', 'id': 48, 'name': 'fork'}, {'supercategory': 'kitchen', 'id': 49, 'name': 'knife'}, {'supercategory': 'kitchen', 'id': 50, 'name': 'spoon'}, {'supercategory': 'kitchen', 'id': 51, 'name': 'bowl'}, {'supercategory': 'food', 'id': 52, 'name': 'banana'}, {'supercategory': 'food', 'id': 53, 'name': 'apple'}, {'supercategory': 'food', 'id': 54, 'name': 'sandwich'}, {'supercategory': 'food', 'id': 55, 'name': 'orange'}, {'supercategory': 'food', 'id': 56, 'name': 'broccoli'}, {'supercategory': 'food', 'id': 57, 'name': 'carrot'}, {'supercategory': 'food', 'id': 58, 'name': 'hot dog'}, {'supercategory': 'food', 'id': 59, 'name': 'pizza'}, {'supercategory': 'food', 'id': 60, 'name': 'donut'}, {'supercategory': 'food', 'id': 61, 'name': 'cake'}, {'supercategory': 'furniture', 'id': 62, 'name': 'chair'}, {'supercategory': 'furniture', 'id': 63, 'name': 'couch'}, {'supercategory': 'furniture', 'id': 64, 'name': 'potted plant'}, {'supercategory': 'furniture', 'id': 65, 'name': 'bed'}, {'supercategory': 'furniture', 'id': 67, 'name': 'dining table'}, {'supercategory': 'furniture', 'id': 70, 'name': 'toilet'}, {'supercategory': 'electronic', 'id': 72, 'name': 'tv'}, {'supercategory': 'electronic', 'id': 73, 'name': 'laptop'}, {'supercategory': 'electronic', 'id': 74, 'name': 'mouse'}, {'supercategory': 'electronic', 'id': 75, 'name': 'remote'}, {'supercategory': 'electronic', 'id': 76, 'name': 'keyboard'}, {'supercategory': 'electronic', 'id': 77, 'name': 'cell phone'}, {'supercategory': 'appliance', 'id': 78, 'name': 'microwave'}, {'supercategory': 'appliance', 'id': 79, 'name': 'oven'}, {'supercategory': 'appliance', 'id': 80, 'name': 'toaster'}, {'supercategory': 'appliance', 'id': 81, 'name': 'sink'}, {'supercategory': 'appliance', 'id': 82, 'name': 'refrigerator'}, {'supercategory': 'indoor', 'id': 84, 'name': 'book'}, {'supercategory': 'indoor', 'id': 85, 'name': 'clock'}, {'supercategory': 'indoor', 'id': 86, 'name': 'vase'}, {'supercategory': 'indoor', 'id': 87, 'name': 'scissors'}, {'supercategory': 'indoor', 'id': 88, 'name': 'teddy bear'}, {'supercategory': 'indoor', 'id': 89, 'name': 'hair drier'}, {'supercategory': 'indoor', 'id': 90, 'name': 'toothbrush'}]
+
+def ret_categories_downsized():
+    return [{'supercategory': 'person', 'id': 0, 'name': 'person'}, 
+    {'supercategory': 'vehicle', 'id': 1, 'name': '4 wheeler'}, {'supercategory': 'vehicle', 'id': 2, 'name': '2 wheeler'}]
+
+
+class AccumCOCO:
+    def __init__(self):
+        self.cocoDt = []
+        self.cocoGt = []
+        self.gt_counter = 0
+        self.dt_counter = 0
+
+    def add_det_to_coco(self, iter_id, dets, is_gt = False):
+        '''
+        convert a CenterNet detection to coco image instance
+        '''
+        for i in range(len(dets)):
+            bbox = [dets[i][0], dets[i][1], dets[i][2]-dets[i][0], dets[i][3]- dets[i][1]]
+            res = {
+                "image_id": int(iter_id), 
+                "category_id": int(dets[i][5]), 
+                "bbox": bbox,
+                "score": dets[i][4],
+                "area": bbox[2] * bbox[3] # box area
+            }
+            if is_gt:
+                res['iscrowd'] = 0
+                res['ignore'] = 0
+                res['id'] = self.gt_counter
+                self.gt_counter+=1
+                self.cocoGt += [res]
+            else:
+                res['id'] = self.dt_counter
+                self.dt_counter+=1
+                self.cocoDt += [res]
+    
+    def get_gt(self):
+        return {'annotations': self.cocoGt, 'categories': ret_categories_downsized()}
+    
+    def get_dt(self):
+        return self.cocoDt
+
 class Metric(ABC):
     def __init__(self, opt):
         self.opt = opt
@@ -130,13 +180,13 @@ class regmAP(mAP):
             ap[t] = self.get_ap(recalls[:, t], precisions[:, t])
         return recalls, precisions, ap
 
-    def get_score(self, batch, output, u, is_baseline=False):
+    def get_score(self, batch, output, u, is_baseline=False, save_class_score=False):
         dets = ctdet_decode( output['hm'], output['wh'], reg=output['reg'], cat_spec_wh=self.opt.cat_spec_wh, K=self.opt.K)
         predictions = dets.detach().cpu().numpy().reshape(1, -1, dets.shape[2])
-        predictions[:, :, :4] *= self.opt.down_ratio
+        predictions[:, :, :4] *= self.opt.down_ratio * self.opt.downsample
         dets_gt = batch['meta']['gt_det'].numpy().reshape(1, -1, dets.shape[2])
         dets_gt = copy.deepcopy(dets_gt)
-        dets_gt[:, :, :4] *= self.opt.down_ratio
+        dets_gt[:, :, :4] *= self.opt.down_ratio * self.opt.downsample
 
         # debatch
         predictions = predictions[0]
@@ -165,6 +215,8 @@ class regmAP(mAP):
         aps *= 100.0
         nonzero_gt = aps[0][filt != 0]
         mean_aps = np.mean(nonzero_gt, axis=0)
+        if save_class_score:
+            return mean_aps, aps
         return mean_aps
 
 

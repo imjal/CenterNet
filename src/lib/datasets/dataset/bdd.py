@@ -14,8 +14,9 @@ from utils.image import flip, color_aug
 from utils.image import get_affine_transform, affine_transform
 from utils.image import gaussian_radius, draw_umich_gaussian, draw_msra_gaussian
 from utils.image import draw_dense_reg
+from utils.coco import COCO
 from utils.distillation_utils import batch_segmentation_masks
-
+from pycocotools.cocoeval import COCOeval
 import math
 import pdb
 from lib.datasets.dataset.eval_bdd import evaluate_detection
@@ -248,7 +249,9 @@ class BDDStream(data.IterableDataset):
       img = self.cap[self.count]
     else:
       original_img = next(self.frame_gen)
-      img = cv2.resize(original_img, (1280, 720))
+      in_h = int(original_img.shape[0] / self.opt.downsample)
+      in_w = int(original_img.shape[1] / self.opt.downsample)
+      img = cv2.resize(original_img, (in_w, in_h))
 
     start_img_transform = time.time()
     anns = self.pred_to_inst(self.detections[self.count])
@@ -327,7 +330,7 @@ class BDDStream(data.IterableDataset):
       ax.imshow(im)
       for i in range(num_objs):
         bbox = np.array(anns[i]['bbox'], dtype=np.int32)
-        bbox = bbox / 3
+        bbox = bbox / self.opt.downsample
         rect = patches.Rectangle((bbox[0],bbox[1]),bbox[2]-bbox[0],bbox[3]-bbox[1],linewidth=1,edgecolor='r',facecolor='none')
         ax.add_patch(rect)
       plt.savefig('/home/jl5/CenterNet/tmp.png')
@@ -349,7 +352,7 @@ class BDDStream(data.IterableDataset):
     for k in range(num_objs):
       ann = anns[k]
       bbox = np.array(ann['bbox'], dtype=np.float32) # self._coco_box_to_bbox(ann['bbox'])
-      bbox = bbox / 3 # if need to downsample 
+      bbox = bbox / self.opt.downsample # if need to downsample 
       cls_id = int(self.cat_ids[ann['category_id']])
       if flipped:
         bbox[[0, 2]] = width - bbox[[2, 0]] - 1
@@ -408,20 +411,18 @@ class BDDStream(data.IterableDataset):
   def _to_float(self, x):
     return float("{:.2f}".format(x))
 
-  def convert_eval_format(self, all_bboxes):
-    detections = [[[] for __ in range(self.num_samples)] \
-                  for _ in range(self.num_classes + 1)]
-    return detections
+  def save_results(self, results, save_dict, save_dir):
+    # TODO: save actual predictions at somepoint, atm only saving metrics
+    pickle.dump(save_dict, open(save_dir + '/raw_save_dict.pkl', 'wb'))
 
-  def save_results(self, results, save_dir):
-    json.dump(self.convert_eval_format(results), 
-              open('{}/results.json'.format(save_dir), 'w'))
-
-  def run_eval(self, results, save_dir):
-    # result_json = os.path.join(save_dir, "results.json")
-    # detections  = self.convert_eval_format(results)
-    # json.dump(detections, open(result_json, "w"))
-    self.save_results(results, save_dir)
+  def run_online_eval(self, save_dict):
+    gt_coco = COCO(save_dict['gt_dict'])
+    dt_coco = gt_coco.loadRes(save_dict['dt_dict'])
+    E = COCOeval(gt_coco, dt_coco, iouType='bbox')
+    E.params.catIds = [0, 1, 2]
+    E.evaluate()
+    E.accumulate()
+    E.summarize()
   
   def __iter__(self):
     return self
