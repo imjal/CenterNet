@@ -8,12 +8,15 @@ from progress.bar import Bar
 from models.data_parallel import DataParallel
 from utils.utils import AverageMeter
 import numpy as np
-from utils.metrics import get_metric
+from utils.metrics import get_metric, AccumCOCO
 from scipy.spatial import distance
 import pdb
 import copy
 import pickle
 import matplotlib.pyplot as plt
+import cv2
+import os
+
 
 
 
@@ -22,7 +25,7 @@ class ModelWithLoss(torch.nn.Module):
     super(ModelWithLoss, self).__init__()
     self.model = model
     self.loss = loss
-  
+    
   def forward(self, batch, is_update=True):
     outputs = self.model(batch['input'])
     if not is_update:
@@ -37,7 +40,8 @@ class BaseTrainerIter(object):
     self.optimizer = optimizer
     self.loss_stats, self.loss = self._get_losses(opt)
     self.model_with_loss = ModelWithLoss(model, self.loss)
-
+    self.accum_coco = AccumCOCO()
+  
   def set_device(self, gpus, chunk_sizes, device):
     if len(gpus) > 1:
       self.model_with_loss = DataParallel(
@@ -51,7 +55,6 @@ class BaseTrainerIter(object):
         if isinstance(v, torch.Tensor):
           state[k] = v.to(device=device, non_blocking=True)
 
-
   def run_epoch(self, phase, epoch, data_loader):
     model_with_loss = self.model_with_loss
     if phase == 'train':
@@ -61,7 +64,6 @@ class BaseTrainerIter(object):
         model_with_loss = self.model_with_loss.module
       model_with_loss.eval()
       torch.cuda.empty_cache()
-
     opt = self.opt
     results = {}
     data_time, batch_time = AverageMeter(), AverageMeter()
@@ -69,6 +71,15 @@ class BaseTrainerIter(object):
     num_iters = len(data_loader) if opt.num_iters < 0 else opt.num_iters
     bar = Bar('{}/{}'.format(opt.task, opt.exp_id), max=num_iters)
     end = time.time()
+    
+    if opt.save_video:
+      fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+      vid_pth = os.path.join(opt.save_dir, opt.exp_id + '_pred')
+      gt_pth = os.path.join(opt.save_dir, opt.exp_id + '_gt')
+      out_pred = cv2.VideoWriter('{}.mp4'.format(vid_pth),fourcc, 
+        opt.save_framerate, (opt.input_w, opt.input_h))
+      out_gt = cv2.VideoWriter('{}.mp4'.format(gt_pth),fourcc, 
+        opt.save_framerate, (opt.input_w, opt.input_h))
 
     delta_max = opt.delta_max
     delta_min = opt.delta_min
@@ -84,7 +95,7 @@ class BaseTrainerIter(object):
       for k in batch:
         if k != 'meta':
           batch[k] = batch[k].to(device=opt.device, non_blocking=True) # send batch to gpu
-      output, loss, loss_stats = model_with_loss(batch) # run model 
+      output, loss, loss_stats = model_with_loss(batch)
       loss = loss.mean() # mean of loss
       current_time = time.time()
       model_time = (current_time - start_time)
@@ -111,9 +122,20 @@ class BaseTrainerIter(object):
       update_time = (current_time - start_time)
       return update_time
     
+    def store_metric_coco(imgId, batch, output):
+      dets = ctdet_decode( output['hm'], output['wh'], reg=output['reg'], cat_spec_wh=self.opt.cat_spec_wh, K=self.opt.K)
+      predictions = dets.detach().cpu().numpy().reshape(1, -1, dets.shape[2])
+      predictions[:, :, :4] *= self.opt.down_ratio * self.opt.downsample
+      dets_gt = batch['meta']['gt_det'].numpy().reshape(1, -1, dets.shape[2])
+      dets_gt = copy.deepcopy(dets_gt)
+      dets_gt[:, :, :4] *= self.opt.down_ratio * self.opt.downsample
+      self.accum_coco.add_det_to_coco(iter_id, predictions[0])
+      self.accum_coco.add_det_to_coco(iter_id, dets_gt[0], is_gt=True)
+
     data_iter = iter(data_loader)
     update_lst = []
     acc_lst = []
+    coco_res_lst = []
     while True:
       load_time, total_model_time, model_time, update_time, tot_time, display_time = 0, 0, 0, 0, 0, 0
       start_time = time.time()
@@ -151,25 +173,34 @@ class BaseTrainerIter(object):
         else:
           update_lst += [(iter_id, 0)]
           output, model_time = run_model(batch)
-          if opt.acc_collect:
+          if opt.acc_collect and (iter_id % opt.acc_interval == 0):
             acc = metric.get_score(batch, output, 0)
             print(acc)
             acc_lst+=[(iter_id, acc)]
+            store_metric_coco(iter_id, batch, output)
       else:
         output, model_time = run_model(batch)
         if opt.acc_collect:
-          acc = metric.get_score(batch, output, 0, is_baseline=True)
-          print(acc)
-          acc_lst+=[(iter_id, acc)]
+          # acc = metric.get_score(batch, output, 0, is_baseline=True)
+          # print(acc)
+          store_metric_coco(iter_id, batch, output)
+          # acc_lst+=[(iter_id, acc)]
 
       display_start = time.time()
-      if opt.debug > 0:
+      # tracking task
+      if opt.tracking: 
+        trackers, viz_pred = self.tracking(batch, output, iter_id)
+        out_pred.write(viz_pred)
+      elif opt.save_video:
+        pred, gt = self.debug(batch, output, iter_id)
+        out_pred.write(pred)
+        out_gt.write(gt)
+      elif opt.debug > 0:
         self.debug(batch, output, iter_id)
+
       display_end = time.time()
       display_time = (display_end - display_start)
-      
       end_time = time.time()
-
       tot_time = (end_time - start_time)
 
       # add a bunch of stuff to the bar to print
@@ -207,20 +238,23 @@ class BaseTrainerIter(object):
       plt.savefig(opt.save_dir + '/update_frequency.png')
       save_dict['updates'] = update_lst
       plt.clf()
-    if opt.acc_collect:
-      plt.scatter(*zip(*acc_lst))
-      plt.xlabel('iteration')
-      plt.ylabel('mAP')
-      plt.savefig(opt.save_dir + '/acc_figure.png')
-      save_dict['acc'] = acc_lst
-    if opt.adaptive and opt.acc_collect:
-      x, y = zip(*filter(lambda x: x[1] > 0, update_lst))
-      plt.scatter(x, y, c='r', marker='o')
-      plt.xlabel('iteration')
+    # if opt.acc_collect:
+    #   plt.scatter(*zip(*acc_lst))
+    #   plt.xlabel('iteration')
+    #   plt.ylabel('mAP')
+    #   plt.savefig(opt.save_dir + '/acc_figure.png')
+    #   save_dict['acc'] = acc_lst
+    # if opt.adaptive and opt.acc_collect:
+    #   x, y = zip(*filter(lambda x: x[1] > 0, update_lst))
+    #   plt.scatter(x, y, c='r', marker='o')
+    #   plt.xlabel('iteration')
     
     # save dict
-    pickle.dump(save_dict, open(opt.save_dir + '/raw_save_dict.pkl', 'wb'))
-    return ret, results
+    gt_dict = self.accum_coco.get_gt()
+    dt_dict = self.accum_coco.get_dt()
+    save_dict['gt_dict'] = gt_dict
+    save_dict['dt_dict'] = dt_dict
+    return ret, results, save_dict
   
   def debug(self, batch, output, iter_id):
     raise NotImplementedError
