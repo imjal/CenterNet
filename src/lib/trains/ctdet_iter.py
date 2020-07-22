@@ -13,6 +13,8 @@ from utils.debugger import Debugger
 from utils.post_process import ctdet_post_process
 from utils.oracle_utils import gen_oracle_map
 from .base_trainer_iter import BaseTrainerIter
+from trains.sort import *
+import cv2
 
 class CtdetLoss(torch.nn.Module):
   def __init__(self, opt):
@@ -77,11 +79,43 @@ class CtdetLoss(torch.nn.Module):
 class CtdetTrainerIter(BaseTrainerIter):
   def __init__(self, opt, model, optimizer=None):
     super(CtdetTrainerIter, self).__init__(opt, model, optimizer=optimizer)
+    self.mot_tracker = Sort()
+    self.coloursRGB = np.random.randint(256, size=(32,3), dtype=int) #used only for display
   
   def _get_losses(self, opt):
     loss_states = ['loss', 'hm_loss', 'wh_loss', 'off_loss']
     loss = CtdetLoss(opt)
     return loss_states, loss
+
+  def tracking(self, batch, output, iter_id):
+    opt = self.opt
+    def display_tracker(frame, frame_num, trackers):
+      for d in trackers:
+          # print('%d,%d,%.2f,%.2f,%.2f,%.2f,1,-1,-1,-1'%(frame_num,d[4],d[0],d[1],d[2]-d[0],d[3]-d[1]))
+          d = d.astype(np.int32)
+          color = self.coloursRGB[d[4]%32,:]
+          c = (int(color[0]), int(color[1]), int(color[2]))
+          frame = cv2.UMat(frame).get()
+          cv2.rectangle(frame, (d[0], d[1]), (d[2], d[3]), c, 2)
+          # cv2.rectangle(frame, (int(d[0]), int(d[1] - cat_size[1] - 2)), (int(d[0] + cat_size[0]), int(d[1] - 2)), c, -1)
+          # cv2.putText(frame, txt, (int(bbox[0]), int(bbox[1] - 2)), 
+          #             font, 0.5, (0, 0, 0), thickness=1, lineType=cv2.LINE_AA)
+      # cv2.imwrite('cv2img.png', frame)
+      return frame
+    
+    img = batch['input'][0].detach().cpu().numpy().transpose(1, 2, 0)
+    frame = np.clip(((img * opt.std + opt.mean) * 255.), 0, 255).astype(np.uint8)
+
+    reg = output['reg'] if opt.reg_offset else None
+    dets = ctdet_decode(
+      output['hm'], output['wh'], reg=reg,
+      cat_spec_wh=opt.cat_spec_wh, K=opt.K)
+    dets = dets.detach().cpu().numpy().reshape(1, -1, dets.shape[2])
+    dets[:, :, :4] *= opt.down_ratio
+    filt_dets = dets[dets[:, :, 4] > opt.center_thresh]
+    trackers = self.mot_tracker.update(filt_dets)
+    viz = display_tracker(frame, iter_id, trackers)
+    return trackers, viz
 
   def debug(self, batch, output, iter_id):
     opt = self.opt
@@ -102,10 +136,7 @@ class CtdetTrainerIter(BaseTrainerIter):
       img = batch['input'][i].detach().cpu().numpy().transpose(1, 2, 0)
       img = np.clip(((
         img * opt.std + opt.mean) * 255.), 0, 255).astype(np.uint8)
-      pred = debugger.gen_colormap(output['hm'][i].detach().cpu().numpy())
-      gt = debugger.gen_colormap(batch['hm'][i].detach().cpu().numpy())
-      debugger.add_blend_img(img, pred, 'pred_hm')
-      debugger.add_blend_img(img, gt, 'gt_hm')
+      
       debugger.add_img(img, img_id='out_pred')
       for k in range(len(dets[i])):
         if dets[i, k, 4] > opt.vis_thresh:
@@ -117,14 +148,24 @@ class CtdetTrainerIter(BaseTrainerIter):
         if dets_gt[i, k, 4] > opt.vis_thresh:
           debugger.add_coco_bbox(dets_gt[i, k, :4], dets_gt[i, k, -1],
                                  dets_gt[i, k, 4], img_id='out_gt')
+      if opt.save_video: # only save the predicted and gt images
+        return debugger.imgs['out_pred'], debugger.imgs['out_gt']
+      
+      pred = debugger.gen_colormap(output['hm'][i].detach().cpu().numpy())
+      gt = debugger.gen_colormap(batch['hm'][i].detach().cpu().numpy())
+      debugger.add_blend_img(img, pred, 'pred_hm')
+      debugger.add_blend_img(img, gt, 'gt_hm')
+
       if opt.task == 'ctdet_semseg':
         debugger.visualize_masks(seg_gt, img_id='out_mask_gt')
         debugger.visualize_masks(seg_pred, img_id='out_mask_pred')
 
       if opt.debug == 4:
         debugger.save_all_imgs(opt.debug_dir, prefix=iter_id)
-      else:
-        debugger.show_all_imgs(pause=True)
+      # else:
+      #   debugger.show_all_imgs(pause=True)
+
+      
 
   def save_result(self, output, batch, results):
     reg = output['reg'] if self.opt.reg_offset else None

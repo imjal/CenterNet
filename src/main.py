@@ -14,6 +14,7 @@ from models.data_parallel import DataParallel
 from logger import Logger
 from datasets.dataset_factory import get_dataset
 from trains.train_factory import train_factory
+from itertools import chain
 import pdb
 
 
@@ -31,10 +32,13 @@ def main(opt):
   
   print('Creating model...')
   model = create_model(opt.arch, opt.heads, opt.head_conv)
+  if opt.freeze:
+    for param in chain(model.base.parameters(), model.dla_up.parameters()):
+      param.requires_grad = False
   if opt.optimizer == 'RMSProp':
-    optimizer = torch.optim.RMSprop(model.parameters(), opt.lr, momentum=opt.momentum)
+    optimizer = torch.optim.RMSprop(filter(lambda p: p.requires_grad, model.parameters()), opt.lr, momentum=opt.momentum)
   else:
-    optimizer = torch.optim.Adam(model.parameters(), opt.lr)
+    optimizer = torch.optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), opt.lr)
   start_epoch = 0
   if opt.load_model != '':
     model, optimizer, start_epoch = load_model(
