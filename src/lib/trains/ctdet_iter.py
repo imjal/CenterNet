@@ -5,7 +5,6 @@ from __future__ import print_function
 import torch
 import numpy as np
 import time
-
 from models.losses import FocalLoss, RegL1Loss, RegLoss, NormRegL1Loss, RegWeightedL1Loss, CrossEntropy2d
 from models.decode import ctdet_decode
 from models.utils import _sigmoid
@@ -15,77 +14,65 @@ from utils.oracle_utils import gen_oracle_map
 from .base_trainer_iter import BaseTrainerIter
 from trains.sort import *
 import cv2
+from .ctdet_loss import CtdetLoss
 
-class CtdetLoss(torch.nn.Module):
-  def __init__(self, opt):
-    super(CtdetLoss, self).__init__()
-    self.crit = torch.nn.MSELoss() if opt.mse_loss else FocalLoss()
-    self.crit_reg = RegL1Loss() if opt.reg_loss == 'l1' else \
-              RegLoss() if opt.reg_loss == 'sl1' else None
-    self.crit_wh = torch.nn.L1Loss(reduction='sum') if opt.dense_wh else \
-              NormRegL1Loss() if opt.norm_wh else \
-              RegWeightedL1Loss() if opt.cat_spec_wh else self.crit_reg
-    self.crit_seg = CrossEntropy2d()
-    self.opt = opt
-
-  def forward(self, outputs, batch):
-    opt = self.opt
-    hm_loss, wh_loss, off_loss, sem_seg_loss = 0, 0, 0, 0
-    for s in range(opt.num_stacks):
-      output = outputs[s]
-      if not opt.mse_loss:
-        output['hm'] = _sigmoid(output['hm'])
-
-      if opt.eval_oracle_hm:
-        output['hm'] = batch['hm']
-      if opt.eval_oracle_wh:
-        output['wh'] = torch.from_numpy(gen_oracle_map(
-          batch['wh'].detach().cpu().numpy(), 
-          batch['ind'].detach().cpu().numpy(), 
-          output['wh'].shape[3], output['wh'].shape[2])).to(opt.device)
-      if opt.eval_oracle_offset:
-        output['reg'] = torch.from_numpy(gen_oracle_map(
-          batch['reg'].detach().cpu().numpy(), 
-          batch['ind'].detach().cpu().numpy(), 
-          output['reg'].shape[3], output['reg'].shape[2])).to(opt.device)
-      hm_loss += self.crit(output['hm'], batch['hm']) / opt.num_stacks
-      if opt.wh_weight > 0:
-        if opt.dense_wh:
-          mask_weight = batch['dense_wh_mask'].sum() + 1e-4
-          wh_loss += (
-            self.crit_wh(output['wh'] * batch['dense_wh_mask'],
-            batch['dense_wh'] * batch['dense_wh_mask']) / 
-            mask_weight) / opt.num_stacks
-        elif opt.cat_spec_wh:
-          wh_loss += self.crit_wh(
-            output['wh'], batch['cat_spec_mask'],
-            batch['ind'], batch['cat_spec_wh']) / opt.num_stacks
-        else:
-          wh_loss += self.crit_reg(
-            output['wh'], batch['reg_mask'],
-            batch['ind'], batch['wh']) / opt.num_stacks
-      if opt.task == 'ctdet_semseg':
-        sem_seg_loss = torch.mean(self.crit_seg(output['seg'], batch['seg'][0], batch['weight_seg'][0]))
-      if opt.reg_offset and opt.off_weight > 0:
-        off_loss += self.crit_reg(output['reg'], batch['reg_mask'],
-                             batch['ind'], batch['reg']) / opt.num_stacks
-        
-    loss = opt.hm_weight * hm_loss + opt.wh_weight * wh_loss + \
-           opt.off_weight * off_loss + sem_seg_loss
-    loss_stats = {'loss': loss, 'hm_loss': hm_loss,
-                  'wh_loss': wh_loss, 'off_loss': off_loss, 'sem_seg_loss': sem_seg_loss}
-    return loss, loss_stats
+class ModelWithLoss(torch.nn.Module):
+  def __init__(self, model, loss):
+    super(ModelWithLoss, self).__init__()
+    self.model = model
+    self.loss = loss
+    
+  def forward(self, batch, is_update=True):
+    outputs = self.model(batch['input'])
+    if not is_update:
+      return outputs
+    loss, loss_stats = self.loss(outputs, batch)
+    return outputs[-1], loss, loss_stats
 
 class CtdetTrainerIter(BaseTrainerIter):
   def __init__(self, opt, model, optimizer=None):
     super(CtdetTrainerIter, self).__init__(opt, model, optimizer=optimizer)
     self.mot_tracker = Sort()
     self.coloursRGB = np.random.randint(256, size=(32,3), dtype=int) #used only for display
-  
+    self.loss_stats, self.loss = self._get_losses(opt)
+    self.model = ModelWithLoss(model, self.loss)
+    
   def _get_losses(self, opt):
     loss_states = ['loss', 'hm_loss', 'wh_loss', 'off_loss']
     loss = CtdetLoss(opt)
     return loss_states, loss
+
+  def train_model(self, batch):
+      start_time = time.time()
+      self.model.train()
+      for k in batch:
+        if k != 'meta':
+          batch[k] = batch[k].to(device=self.opt.device, non_blocking=True) # send batch to gpu
+      output, loss, loss_stats = self.model(batch)
+      loss = loss.mean() # mean of loss
+      current_time = time.time()
+      model_time = (current_time - start_time)
+      return output, loss, loss_stats, model_time
+
+  def run_model(self, batch):
+      start_time = time.time()
+      self.model.eval() # difference between train and run
+      for k in batch:
+        if k != 'meta':
+          batch[k] = batch[k].to(device=self.opt.device, non_blocking=True) # send batch to gpu
+      output = self.model(batch, is_update=False) # run model
+      current_time = time.time()
+      model_time = (current_time - start_time)
+      return output[0], model_time
+    
+  def update_model(self, loss):
+      start_time = time.time()
+      self.optimizer.zero_grad()
+      loss.backward()
+      self.optimizer.step()
+      current_time = time.time()
+      update_time = (current_time - start_time)
+      return update_time
 
   def tracking(self, batch, output, iter_id):
     opt = self.opt
@@ -164,7 +151,6 @@ class CtdetTrainerIter(BaseTrainerIter):
         debugger.save_all_imgs(opt.debug_dir, prefix=iter_id)
       # else:
       #   debugger.show_all_imgs(pause=True)
-
       
 
   def save_result(self, output, batch, results):

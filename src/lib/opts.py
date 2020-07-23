@@ -234,16 +234,22 @@ class opts(object):
     self.parser.add_argument('--delta_max', type=int, default=64, help='number of iterations to skip updating in stream')
     self.parser.add_argument('--delta_min', type=int, default=8, help='number of iterations to skip updating in video stream')
     self.parser.add_argument('--umax', type=int, default=64, help='max number of iterations to update')
+    
+    # metric collection
     self.parser.add_argument('--acc_metric', default='mAP', help= 'mAP | mIOU')
     self.parser.add_argument('--acc_thresh', type=int, default=80, help='accuracy threshold on when to stop updating')
     self.parser.add_argument('--display_timing', action='store_true', 
                              help='use jitnet online adaptation, otherwise default to running pretrained model')
     self.parser.add_argument('--acc_collect', action='store_true', help='record accuracy on every iteration and display graph')
     self.parser.add_argument('--acc_interval', type=int, default=1, help='window size of when to collect the data point')
+    
+    # video loading and saving
     self.parser.add_argument('--vidstream', default='skvideo', help='skvideo | cv2')
     self.parser.add_argument('--downsample', type=int, default=1, help='downsample image prior to running')
     self.parser.add_argument('--save_video', action='store_true', help='only save video that is generated')
     self.parser.add_argument('--save_framerate', type=int, default=30, help='save framerate for video')
+    
+    # tracking / experimental additions
     self.parser.add_argument('--tracking', action='store_true', help='turn on tracking')
     self.parser.add_argument('--freeze', action='store_true', help='freeze the feature weights')
     self.parser.add_argument('--track_feature', action='store_true', help='freeze the feature weights')

@@ -5,6 +5,7 @@ from abc import ABC, abstractmethod
 import copy
 from lib.datasets.dataset.label_mappings import coco_class_groups, get_remap, bdd_class_groups
 
+# TODO: find some fix for this to make it less disgusting
 def ret_categories():
     return [{'supercategory': 'person', 'id': 1, 'name': 'person'}, 
     {'supercategory': 'vehicle', 'id': 2, 'name': 'bicycle'}, {'supercategory': 'vehicle', 'id': 3, 'name': 'car'},
@@ -48,6 +49,16 @@ class AccumCOCO:
                 res['id'] = self.dt_counter
                 self.dt_counter+=1
                 self.cocoDt += [res]
+
+    def store_metric_coco(self, imgId, batch, output, opt):
+      dets = ctdet_decode( output['hm'], output['wh'], reg=output['reg'], cat_spec_wh=opt.cat_spec_wh, K=opt.K)
+      predictions = dets.detach().cpu().numpy().reshape(1, -1, dets.shape[2])
+      predictions[:, :, :4] *= opt.down_ratio * opt.downsample
+      dets_gt = batch['meta']['gt_det'].numpy().reshape(1, -1, dets.shape[2])
+      dets_gt = copy.deepcopy(dets_gt)
+      dets_gt[:, :, :4] *= opt.down_ratio * opt.downsample
+      self.add_det_to_coco(imgId, predictions[0])
+      self.add_det_to_coco(imgId, dets_gt[0], is_gt=True)
     
     def get_gt(self):
         return {'annotations': self.cocoGt, 'categories': ret_categories_downsized()}
