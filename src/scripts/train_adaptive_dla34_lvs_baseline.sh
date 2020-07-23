@@ -1,5 +1,5 @@
 #!/bin/bash
-python main.py ctdet_stream  --exp_id dla34_baseline_pt_driving$1_umax$2 --batch_size 1 --lr 5e-4 --gpus 0 --num_workers 1 --num_epochs 1 \
+python online_distillation.py ctdet_stream  --exp_id freezed_dla34_baseline_pt_driving$1 --batch_size 1 --lr 5e-4 --gpus 0 --num_workers 1 --num_epochs 1 \
     --arch dla_34 \
     --num_iters 17824 \
     --dataset bddstream --vid_paths /data2/jl5/driving1/driving$1.mp4 \
