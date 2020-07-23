@@ -111,3 +111,9 @@ ENV/
 # mypy
 .mypy_cache/
 tmp.png
+
+exp/
+src/lib/models/networks/DCNv2/src/cuda/dcn_v2_cuda.cu
+exp
+src/scripts/train_adaptive_dla_cloud.sh
+videos/
