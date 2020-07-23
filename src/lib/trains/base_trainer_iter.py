@@ -14,16 +14,9 @@ import pdb
 import copy
 import pickle
 import matplotlib.pyplot as plt
-<<<<<<< HEAD
 import cv2
 import os
 
-=======
-import detectron2 
-from detectron2.engine import DefaultPredictor
-from detectron2.config import get_cfg
-from detectron2.utils.visualizer import Visualizer
->>>>>>> 6c65e34448b226d89170fb6d979c9f26125091e6
 
 
 
