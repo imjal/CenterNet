@@ -6,7 +6,7 @@ python online_distillation.py ctdet_stream  --exp_id freezed_dla34_baseline_pt_d
     --ann_paths /data2/jl5/bdd100k_pred/train/instances_driving$1.pkl \
     --input_h 736 --input_w 1280 --input_res 1280 \
     --not_rand_crop --shift 0 --scale 0 --flip 0 --no_color_aug \
-    --debug 4 --debugger_theme white --not_rand_crop \
+    --debug 1 --debugger_theme white --not_rand_crop \
     --load_model /home/jl5/CenterNet/models/ctdet_coco_dla_2x.pth \
     --display_timing --center_thresh 0.3 --vis_thresh 0.3 --lr 0.00001 \
     --momentum 0.9 --acc_collect --vidstream cv2 --umax 32
