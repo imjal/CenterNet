@@ -253,7 +253,8 @@ class opts(object):
     self.parser.add_argument('--tracking', action='store_true', help='turn on tracking')
     self.parser.add_argument('--freeze', action='store_true', help='freeze the feature weights')
     self.parser.add_argument('--track_feature', action='store_true', help='freeze the feature weights')
-    
+    self.parser.add_argument('--similarity', default='cos', help='cos | euclid')
+    self.parser.add_argument('--t_lost', type=int, default=1, help='# of frames to keep a detection')
 
 
   def parse(self, args=''):
@@ -357,6 +358,13 @@ class opts(object):
       if opt.reg_offset:
         opt.heads.update({'reg': 2})
     elif opt.task == 'ctdet_stream':
+      if not opt.adaptive:
+        opt.num_classes = 80
+      opt.heads = {'hm': opt.num_classes,
+                   'wh': 2 if not opt.cat_spec_wh else 2 * opt.num_classes}
+      if opt.reg_offset:
+        opt.heads.update({'reg': 2})
+    elif opt.task == 'ctdet_tracking':
       if not opt.adaptive:
         opt.num_classes = 80
       opt.heads = {'hm': opt.num_classes,

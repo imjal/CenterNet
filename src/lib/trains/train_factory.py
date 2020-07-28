@@ -7,6 +7,7 @@ from .ddd import DddTrainer
 from .exdet import ExdetTrainer
 from .multi_pose import MultiPoseTrainer
 from .ctdet_iter import CtdetTrainerIter
+from .ctdet_tracking import CtdetTracking
 
 train_factory = {
   'exdet': ExdetTrainer, 
@@ -14,5 +15,6 @@ train_factory = {
   'ctdet': CtdetTrainer,
   'multi_pose': MultiPoseTrainer,
   'ctdet_stream': CtdetTrainerIter,
-  'ctdet_semseg': CtdetTrainerIter
+  'ctdet_semseg': CtdetTrainerIter,
+  'ctdet_tracking': CtdetTracking
 }

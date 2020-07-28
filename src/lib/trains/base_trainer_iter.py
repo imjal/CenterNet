@@ -76,7 +76,7 @@ class BaseTrainerIter(object):
     update_lst = []
     acc_lst = []
     coco_res_lst = []
-    while iter_id < 25:
+    while True:
       load_time, total_model_time, model_time, update_time, tot_time, display_time = 0, 0, 0, 0, 0, 0
       start_time = time.time()
       # data loading
@@ -125,7 +125,7 @@ class BaseTrainerIter(object):
           acc = metric.get_score(batch, output, 0, is_baseline=True)
           print(acc)
           acc_lst+=[(iter_id, acc)]
-          self.accum_coco.store_metric_coco(iter_id, batch, output, opt)
+          self.accum_coco.store_metric_coco(iter_id, batch, output, opt, is_baseline=True)
 
       display_start = time.time()
 
@@ -136,7 +136,7 @@ class BaseTrainerIter(object):
         pred, gt = self.debug(batch, output, iter_id)
         out_pred.write(pred)
         out_gt.write(gt)
-      elif opt.debug > 0:
+      if opt.debug > 1:
         self.debug(batch, output, iter_id)
 
       display_end = time.time()

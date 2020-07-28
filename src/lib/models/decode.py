@@ -485,6 +485,36 @@ def ctdet_filt_centers(heat, reg=None, cat_spec_wh=False, K=100):
     ret = np.concatenate((xs, ys, scores), axis=1)
     return ret
 
+def ctdet_top_centers_wh(heat, wh, reg=None, cat_spec_wh=False, K=100):
+    batch, cat, height, width = heat.size()
+
+    # heat = torch.sigmoid(heat)
+    # perform nms on heatmaps
+    heat = _nms(heat)
+      
+    scores, inds, clses, ys, xs = _topk(heat, K=K)
+    if reg is not None:
+      reg = _transpose_and_gather_feat(reg, inds)
+      reg = reg.view(batch, K, 2)
+      xs = xs.view(batch, K, 1) + reg[:, :, 0:1]
+      ys = ys.view(batch, K, 1) + reg[:, :, 1:2]
+    else:
+      xs = xs.view(batch, K, 1) + 0.5
+      ys = ys.view(batch, K, 1) + 0.5
+    wh = _transpose_and_gather_feat(wh, inds)
+    if cat_spec_wh:
+      wh = wh.view(batch, K, cat, 2)
+      clses_ind = clses.view(batch, K, 1, 1).expand(batch, K, 1, 2).long()
+      wh = wh.gather(2, clses_ind).view(batch, K, 2)
+    else:
+      wh = wh.view(batch, K, 2)
+    clses  = clses.view(batch, K, 1).float()
+    scores = scores.view(batch, K, 1)
+    detections = torch.cat([xs, ys, wh, scores, clses], dim=2)
+      
+    return detections
+
+
 def ctdet_decode(heat, wh, reg=None, cat_spec_wh=False, K=100):
     batch, cat, height, width = heat.size()
 

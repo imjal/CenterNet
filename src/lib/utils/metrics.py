@@ -3,7 +3,7 @@ from models.decode import ctdet_filt_centers, ctdet_decode
 import pdb
 from abc import ABC, abstractmethod
 import copy
-from lib.datasets.dataset.label_mappings import coco_class_groups, get_remap, bdd_class_groups
+from lib.datasets.dataset.label_mappings import coco_class_groups, get_remap, bdd_class_groups, coco2bdd_class_groups, detectron_classes
 
 # TODO: find some fix for this to make it less disgusting
 def ret_categories():
@@ -25,11 +25,17 @@ class AccumCOCO:
         self.cocoGt = []
         self.gt_counter = 0
         self.dt_counter = 0
+        self.remap_coco2bdd = get_remap(coco2bdd_class_groups)
 
-    def add_det_to_coco(self, iter_id, dets, is_gt = False):
+    def add_det_to_coco(self, iter_id, dets, is_gt=False, is_baseline= False):
         '''
         convert a CenterNet detection to coco image instance
         '''
+        def remap(mp, cls):
+            if cls in mp:
+                return mp[cls]
+            else:
+                return -1
         for i in range(len(dets)):
             bbox = [dets[i][0], dets[i][1], dets[i][2]-dets[i][0], dets[i][3]- dets[i][1]]
             res = {
@@ -45,19 +51,27 @@ class AccumCOCO:
                 res['id'] = self.gt_counter
                 self.gt_counter+=1
                 self.cocoGt += [res]
+            elif is_baseline:
+                remapped = remap(self.remap_coco2bdd, detectron_classes[int(dets[i][5])])
+                if remapped < 0:
+                    continue
+                res["category_id"] = remapped
+                res['id'] = self.dt_counter
+                self.dt_counter+=1
+                self.cocoDt += [res]
             else:
                 res['id'] = self.dt_counter
                 self.dt_counter+=1
                 self.cocoDt += [res]
 
-    def store_metric_coco(self, imgId, batch, output, opt):
+    def store_metric_coco(self, imgId, batch, output, opt, is_baseline=False):
       dets = ctdet_decode( output['hm'], output['wh'], reg=output['reg'], cat_spec_wh=opt.cat_spec_wh, K=opt.K)
       predictions = dets.detach().cpu().numpy().reshape(1, -1, dets.shape[2])
       predictions[:, :, :4] *= opt.down_ratio * opt.downsample
       dets_gt = batch['meta']['gt_det'].numpy().reshape(1, -1, dets.shape[2])
       dets_gt = copy.deepcopy(dets_gt)
       dets_gt[:, :, :4] *= opt.down_ratio * opt.downsample
-      self.add_det_to_coco(imgId, predictions[0])
+      self.add_det_to_coco(imgId, predictions[0], is_baseline=is_baseline)
       self.add_det_to_coco(imgId, dets_gt[0], is_gt=True)
     
     def get_gt(self):

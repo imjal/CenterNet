@@ -426,7 +426,7 @@ class Interpolate(nn.Module):
 
 class DLASeg(nn.Module):
     def __init__(self, base_name, heads, pretrained, down_ratio, final_kernel,
-                 last_level, head_conv, out_channel=0):
+                 last_level, head_conv, out_channel=0, grab_feature=False):
         super(DLASeg, self).__init__()
         assert down_ratio in [2, 4, 8, 16]
         self.first_level = int(np.log2(down_ratio))
@@ -435,7 +435,7 @@ class DLASeg(nn.Module):
         channels = self.base.channels
         scales = [2 ** i for i in range(len(channels[self.first_level:]))]
         self.dla_up = DLAUp(self.first_level, channels[self.first_level:], scales)
-
+        self.grab_feature = grab_feature
         if out_channel == 0:
             out_channel = channels[self.first_level]
 
@@ -490,19 +490,20 @@ class DLASeg(nn.Module):
         for i in range(self.last_level - self.first_level):
             y.append(x[i].clone())
         self.ida_up(y, 0, len(y))
-
         z = {}
         for head in self.heads:
             z[head] = self.__getattr__(head)(y[-1])
+        if self.grab_feature:
+            return [z, y[-1]]
         return [z]
     
 
-def get_pose_net(num_layers, heads, head_conv=256, down_ratio=4):
+def get_pose_net(num_layers, heads, head_conv=256, down_ratio=4, gb_feat=False):
   model = DLASeg('dla{}'.format(num_layers), heads,
                  pretrained=True,
                  down_ratio=down_ratio,
                  final_kernel=1,
                  last_level=5,
-                 head_conv=head_conv)
+                 head_conv=head_conv, grab_feature=gb_feat)
   return model
 
