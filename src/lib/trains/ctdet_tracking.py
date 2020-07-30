@@ -25,20 +25,34 @@ from .ctdet_loss import CtdetLoss
 import pdb
 import math
 import matplotlib.pyplot as plt
+import queue
 
 
 class Track:
-  def __init__(self, track_id, mean_feat, pred):
+  def __init__(self, track_id, new_feat, pred):
     self.length = 1
     self.track_id = track_id
-    self.mean_feat = mean_feat
+    self.mean_feat = new_feat
+    self.new_feat = new_feat
+    self.agg_feat = new_feat
     self.pred = pred
     self.lost = 0
+    self.cls = pred[-1]
+    # self.feat_queue = torch.zeros((30, 64))
+    # self.feat_queue[self.length-1] = new_feat
   
-  def update(self, new_mean_feat, pred):
-    self.mean_feat = (self.mean_feat * self.length + new_mean_feat)/ (self.length + 1)
+  def update(self, new_feat, pred):
+    self.mean_feat = (self.mean_feat * 0.1) + (new_feat * 0.9)
+    # self.mean_feat = (self.agg_feat * 0.1) + (new_feat * 0.9)
+    # self.agg_feat = (self.agg_feat * self.length + new_feat)/ (self.length + 1)
+    # self.new_feat = new_feat
+    # TODO: weight the average for newer
+    # keep all features around (some large batch 40/50), compute maximum score to match
+    # keep the difference of the mean class feature and match them
+    # self.feat_queue[self.length-1] = new_feat
     self.length +=1
     self.pred = pred
+    self.lost = 0
 
   def add_lost(self):
     self.lost +=1
@@ -105,6 +119,9 @@ class Tracker:
     if self.opt.similarity == 'cos':
       results_cmpr = self.cos(new_mean.unsqueeze(0), existing_means)
       return 1 - results_cmpr
+    # elif self.opt.similarity == 'maxall':
+    #   for i in len(self.trackers):
+    #     feature = self.trackers[i].feat_queue[: max(self.trackers[i].length, self.trackers[i].feat_queue.shape[0])]
     else:
       results_cmpr = torch.cdist(new_means, existing_means)
       return results_cmpr[0]
@@ -134,8 +151,8 @@ class Tracker:
     for i in range(len(pred)):
       cmpr = self.compare_features(features[i], agg_features)
       match_idx = cmpr.argmin().item()
-      if visited[match_idx]: # or is not within threshold of anything else!! 
-        # top choice already visited so create a new track TODO fix later. 
+      print(self.trackers[match_idx].track_id, cmpr[match_idx].item())
+      if visited[match_idx] or self.trackers[match_idx].cls != pred[i][-1]:
         self.trackers += [Track(self.track_idx, features[i], pred[i])]
         self.track_idx += 1
         break
@@ -158,19 +175,23 @@ class Tracker:
 
 
 class ModelNoSGD(torch.nn.Module):
-  def __init__(self, model, opt):
+  def __init__(self, model, loss, opt):
     super(ModelNoSGD, self).__init__()
     self.model = model
     self.opt = opt
     self.idx = 0
+    self.loss = loss
     self.tracker = Tracker(opt, opt.t_lost)
-      
+  
+  def update(self, is_update): 
+    self.is_update = is_update
 
-  def forward(self, batch, is_update=True):
+  def forward(self, batch):
     output = self.model(batch['input'])
-    if not is_update:
-      # run and don't update mean? doesn't make sense tbh. 
-      pass
+    if self.is_update:
+      loss, loss_stats = self.loss(output, batch)
+      return output[0], loss, loss_stats
+
     # detach both so pytorch graph doesn't explode
     features = output[1].detach()
     dets = ctdet_top_centers_wh( output[0]['hm'], output[0]['wh'], reg=output[0]['reg'], cat_spec_wh=self.opt.cat_spec_wh, K=self.opt.K)
@@ -179,16 +200,16 @@ class ModelNoSGD(torch.nn.Module):
     tracks = self.tracker.add_detections(predictions[0], features[0])
     self.tracker.display_map(batch, tracks, self.idx)
     self.idx += 1
-    
+
     return output[0]
 
-
+    
 class CtdetTracking(BaseTrainerIter):
   def __init__(self, opt, model, optimizer=None):
     super(CtdetTracking, self).__init__(opt, model, optimizer=optimizer)
     self.coloursRGB = np.random.randint(256, size=(32,3), dtype=int) #used only for display
     self.loss_stats, self.loss = self._get_losses(opt)
-    self.model = ModelNoSGD(model, opt) # move model to upper abstraction since the changes are larger
+    self.model = ModelNoSGD(model, self.loss, opt) # move model to upper abstraction since the changes are larger
   
   def _get_losses(self, opt):
     loss_states = ['loss', 'hm_loss', 'wh_loss', 'off_loss']
@@ -197,36 +218,37 @@ class CtdetTracking(BaseTrainerIter):
 
   def train_model(self, batch):
       start_time = time.time()
-      self.model.train()
+      self.model.model.train()
+      self.model.update(True)
       for k in batch:
         if k != 'meta':
           batch[k] = batch[k].to(device=self.opt.device, non_blocking=True) # send batch to gpu
-      output = self.model(batch)
-      # loss = loss.mean() # mean of loss
+      output, loss, loss_stats = self.model(batch)
+      loss = loss.mean()
       current_time = time.time()
       model_time = (current_time - start_time)
-      return output, None, None, model_time
+      return output, loss, None, model_time
 
   def run_model(self, batch):
       start_time = time.time()
-      self.model.eval() # difference between train and run
+      self.model.model.eval() # difference between train and run
+      self.model.update(False)
       for k in batch:
         if k != 'meta':
           batch[k] = batch[k].to(device=self.opt.device, non_blocking=True) # send batch to gpu
-      output = self.model(batch, is_update=False) # run model
+      output = self.model(batch) # run model
       current_time = time.time()
       model_time = (current_time - start_time)
       return output, model_time
     
   def update_model(self, loss):
-      # start_time = time.time()
-      # if phase == 'train': # if training, update
-      #   self.optimizer.zero_grad()
-      #   loss.backward()
-      #   self.optimizer.step()
-      # current_time = time.time()
-      # update_time = (current_time - start_time)
-      # return update_time
+      start_time = time.time()
+      self.optimizer.zero_grad()
+      loss.backward()
+      self.optimizer.step()
+      current_time = time.time()
+      update_time = (current_time - start_time)
+      return update_time
       return 0
 
   def debug(self, batch, output, iter_id):
