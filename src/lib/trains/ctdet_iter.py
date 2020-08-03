@@ -25,6 +25,7 @@ class ModelWithLoss(torch.nn.Module):
   def forward(self, batch, is_update=True):
     outputs = self.model(batch['input'])
     if not is_update:
+      outputs[-1]['hm'] = _sigmoid(outputs[-1]['hm'])
       return outputs
     loss, loss_stats = self.loss(outputs, batch)
     return outputs[-1], loss, loss_stats

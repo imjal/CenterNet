@@ -126,7 +126,7 @@ class BDD(data.Dataset):
 
 
 class BDDStream(data.IterableDataset):
-  num_classes = 3
+  num_classes = 80
   default_resolution = [512, 512]
   mean = np.array([0.485, 0.456, 0.406],
                    dtype=np.float32).reshape(1, 1, 3)
@@ -138,7 +138,7 @@ class BDDStream(data.IterableDataset):
     opt.data_dir = '/data2/jl5/'
     _ann_name = {'train': 'train'}
     self.max_objs = 50
-    self.class_name = ['__ignore__'] + combined_label_names
+    self.class_name = ['__ignore__'] + detectron_classes
     self._valid_ids = np.arange(1, self.num_classes + 1, dtype=np.int32)
     self.cat_ids = {v: i for i, v in enumerate(self._valid_ids)}
     self._data_rng = np.random.RandomState(123)
@@ -197,10 +197,10 @@ class BDDStream(data.IterableDataset):
         return 0
 
     for i in range(len(bbox)):
-      if remap(self.remap_coco2bdd, detectron_classes[classes[i]]) == 0:
-        continue
+      # if remap(self.remap_coco2bdd, detectron_classes[classes[i]]) == 0:
+      #   continue
       ann = {
-        'category_id': remap(self.remap_coco2bdd, detectron_classes[classes[i]]),
+        'category_id': classes[i] + 1, # remap(self.remap_coco2bdd, detectron_classes[classes[i]]),
         'bbox': bbox[i] # _bbox_to_coco_bbox(bbox[i])
         }
       inst.append(ann)
@@ -419,7 +419,7 @@ class BDDStream(data.IterableDataset):
     gt_coco = COCO(save_dict['gt_dict'])
     dt_coco = gt_coco.loadRes(save_dict['dt_dict'])
     E = COCOeval(gt_coco, dt_coco, iouType='bbox')
-    E.params.catIds = [0, 1, 2]
+    E.params.catIds = [0, 1, 2, 3, 5, 6, 7, 9]
     E.evaluate()
     E.accumulate()
     E.summarize()

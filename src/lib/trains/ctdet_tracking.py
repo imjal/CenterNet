@@ -155,7 +155,7 @@ class Tracker:
       if visited[match_idx] or self.trackers[match_idx].cls != pred[i][-1]:
         self.trackers += [Track(self.track_idx, features[i], pred[i])]
         self.track_idx += 1
-        break
+        continue
       # TODO: check if the matched detection is greater than some threshold of similarity
       visited[match_idx] = 1
       self.trackers[match_idx].update(features[i], pred[i])
@@ -193,6 +193,7 @@ class ModelNoSGD(torch.nn.Module):
       return output[0], loss, loss_stats
 
     # detach both so pytorch graph doesn't explode
+    output[0]['hm'] = _sigmoid(output[0]['hm'])
     features = output[1].detach()
     dets = ctdet_top_centers_wh( output[0]['hm'], output[0]['wh'], reg=output[0]['reg'], cat_spec_wh=self.opt.cat_spec_wh, K=self.opt.K)
     predictions = dets.detach().cpu().numpy().reshape(1, -1, dets.shape[2])
@@ -282,20 +283,23 @@ class CtdetTracking(BaseTrainerIter):
         if dets_gt[i, k, 4] > opt.vis_thresh:
           debugger.add_coco_bbox(dets_gt[i, k, :4], dets_gt[i, k, -1],
                                  dets_gt[i, k, 4], img_id='out_gt')
+
       if opt.save_video and opt.debug <= 1: # only save the predicted and gt images
-        return debugger.imgs['out_pred'], debugger.imgs['out_gt']
+        return debugger.imgs['out_pred'], debugger.imgs['out_gt'] # , debugger.imgs['pred_hm'], debugger.imgs['gt_hm']
       
       pred = debugger.gen_colormap(output['hm'][i].detach().cpu().numpy())
       gt = debugger.gen_colormap(batch['hm'][i].detach().cpu().numpy())
       debugger.add_blend_img(img, pred, 'pred_hm')
       debugger.add_blend_img(img, gt, 'gt_hm')
 
+      
       if opt.task == 'ctdet_semseg':
         debugger.visualize_masks(seg_gt, img_id='out_mask_gt')
         debugger.visualize_masks(seg_pred, img_id='out_mask_pred')
 
       if opt.debug == 4:
         debugger.save_all_imgs(opt.debug_dir, prefix=iter_id)
+        import pdb; pdb.set_trace()
       
       if opt.save_video:
         return debugger.imgs['out_pred'], debugger.imgs['out_gt']

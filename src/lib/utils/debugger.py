@@ -68,7 +68,7 @@ class Debugger(object):
       if not opt.adaptive:
          self.names = coco_class_name
       else:
-        self.names = coco2bdd_class_names
+        self.names = coco_class_name
     num_classes = len(self.names)
     self.down_ratio=down_ratio
     # for bird view

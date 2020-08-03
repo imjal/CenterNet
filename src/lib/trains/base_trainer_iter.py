@@ -84,6 +84,9 @@ class BaseTrainerIter(object):
         batch = next(data_iter)
       except StopIteration:
         break
+
+      if iter_id > opt.num_iters:
+        break
       
       loaded_time = time.time()
       load_time += (loaded_time - start_time)
@@ -130,13 +133,13 @@ class BaseTrainerIter(object):
 
       display_start = time.time()
 
-      if opt.tracking: 
+      if opt.tracking:
         trackers, viz_pred = self.tracking(batch, output, iter_id) # TODO: factor this into the other class
         out_pred.write(viz_pred)
       elif opt.save_video:
-        pred, gt, pred_hm, gt_hm = self.debug(batch, output, iter_id)
-        out_pred.write(pred_hm)
-        out_gt.write(gt_hm)
+        pred, gt = self.debug(batch, output, iter_id)
+        out_pred.write(pred)
+        out_gt.write(gt)
       if opt.debug > 1:
         self.debug(batch, output, iter_id)
 

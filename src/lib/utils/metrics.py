@@ -52,10 +52,10 @@ class AccumCOCO:
                 self.gt_counter+=1
                 self.cocoGt += [res]
             elif is_baseline:
-                remapped = remap(self.remap_coco2bdd, detectron_classes[int(dets[i][5])])
-                if remapped < 0:
-                    continue
-                res["category_id"] = remapped
+                # remapped = remap(self.remap_coco2bdd, detectron_classes[int(dets[i][5])])
+                # if remapped < 0:
+                #     continue
+                # res["category_id"] = remapped
                 res['id'] = self.dt_counter
                 self.dt_counter+=1
                 self.cocoDt += [res]
@@ -75,7 +75,7 @@ class AccumCOCO:
       self.add_det_to_coco(imgId, dets_gt[0], is_gt=True)
     
     def get_gt(self):
-        return {'annotations': self.cocoGt, 'categories': ret_categories_downsized()}
+        return {'annotations': self.cocoGt, 'categories': ret_categories()}
     
     def get_dt(self):
         return self.cocoDt
@@ -223,12 +223,12 @@ class regmAP(mAP):
         num_gts = len(dets_gt)
         image_gt_checked = np.zeros((num_gts, len(thresholds)))
         filt_pred = predictions[predictions[:,4] >= self.center_thresh]
-        if is_baseline: # make instance into a 3 class instance for bdd relabeled gt
-            d_map = get_remap(coco_class_groups)
-            pred = filt_pred[:, 5].astype(np.int64)
-            filt_pred = filt_pred[np.isin(pred, np.array(list(d_map.keys())))]
-            if len(filt_pred) != 0: 
-                filt_pred[:, 5] = np.vectorize(d_map.get)(filt_pred[:, 5])
+        # if is_baseline: # make instance into a 3 class instance for bdd relabeled gt
+        #     d_map = get_remap(coco_class_groups)
+        #     pred = filt_pred[:, 5].astype(np.int64)
+        #     filt_pred = filt_pred[np.isin(pred, np.array(list(d_map.keys())))]
+        #     if len(filt_pred) != 0: 
+        #         filt_pred[:, 5] = np.vectorize(d_map.get)(filt_pred[:, 5])
 
         filt = np.zeros(self.opt.num_classes)
         for i in range(self.opt.num_classes):
