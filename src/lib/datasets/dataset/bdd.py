@@ -248,10 +248,10 @@ class BDDStream(data.IterableDataset):
     if self.opt.vidstream == 'skvideo':
       img = self.cap[self.count]
     else:
-      original_img = next(self.frame_gen)
-      in_h = int(original_img.shape[0] / self.opt.downsample)
-      in_w = int(original_img.shape[1] / self.opt.downsample)
-      img = cv2.resize(original_img, (in_w, in_h))
+      img = next(self.frame_gen)
+      # in_h = int(original_img.shape[0] / self.opt.downsample)
+      # in_w = int(original_img.shape[1] / self.opt.downsample)
+      # img = cv2.resize(original_img, (in_w, in_h))
 
     start_img_transform = time.time()
     anns = self.pred_to_inst(self.detections[self.count])
@@ -287,20 +287,20 @@ class BDDStream(data.IterableDataset):
         img = img[:, ::-1, :]
         c[0] =  width - c[0] - 1
 
-      # send to gpu
-      trans_input = get_affine_transform(
-        c, s, 0, [input_w, input_h])
-      inp = cv2.warpAffine(img, trans_input,
-                          (input_w, input_h),
-                          flags=cv2.INTER_LINEAR)
-      inp = torch.from_numpy(inp).cuda()
-      inp = (inp.float() / 255.)
-      
-      # if self.split == 'train' and not self.opt.no_color_aug:
-      #   color_aug(self._data_rng, inp, self._eig_val, self._eig_vec)
-      
-      inp = (inp - torch.from_numpy(self.mean).cuda()) / torch.from_numpy(self.std).cuda()
-      inp = inp.permute(2, 0, 1)
+    # send to gpu
+    trans_input = get_affine_transform(
+      c, s, 0, [input_w, input_h])
+    inp = cv2.warpAffine(img, trans_input,
+                        (input_w, input_h),
+                        flags=cv2.INTER_LINEAR)
+    inp = torch.from_numpy(inp).cuda()
+    inp = (inp.float() / 255.)
+    
+    # if self.split == 'train' and not self.opt.no_color_aug:
+    #   color_aug(self._data_rng, inp, self._eig_val, self._eig_vec)
+    
+    inp = (inp - torch.from_numpy(self.mean).cuda()) / torch.from_numpy(self.std).cuda()
+    inp = inp.permute(2, 0, 1)
 
     end_img_transform = time.time()
     img_transform_time = end_img_transform - start_img_transform
@@ -396,6 +396,7 @@ class BDDStream(data.IterableDataset):
     if self.opt.debug > 0 or not self.split == 'train':
       gt_det = np.array(gt_det, dtype=np.float32) if len(gt_det) > 0 else \
               np.zeros((1, 6), dtype=np.float32)
+      # meta = {'c': c, 's': s, 'gt_det': gt_det, 'img_id': self.count}
       meta = {'c': c, 's': s, 'gt_det': gt_det, 'img_id': self.count}
       ret['meta'] = meta
     self.count+=1

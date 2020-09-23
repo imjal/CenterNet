@@ -56,10 +56,10 @@ def main(opt):
   )
 
   if opt.dataset == 'bddstream':
-    train_loader = torch.utils.data.DataLoader(Dataset(opt, 'train')) # , pin_memory=True)
+    train_loader = torch.utils.data.DataLoader(Dataset(opt, 'val')) # , pin_memory=True)
   else:
     train_loader = torch.utils.data.DataLoader(
-        Dataset(opt, 'train'), 
+        Dataset(opt, 'val'),
         shuffle=True,
         batch_size=opt.batch_size,
         num_workers=opt.num_workers, 
