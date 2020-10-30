@@ -290,7 +290,7 @@ class BDDStream(data.IterableDataset):
       input_h, input_w = self.opt.input_h, self.opt.input_w
 
     flipped = False
-    if split == 'train':
+    if self.split == 'train':
       if not self.opt.not_rand_crop:
         s = s * np.random.choice(np.arange(0.6, 1.4, 0.1))
         w_border = self._get_border(128, img.shape[1])
