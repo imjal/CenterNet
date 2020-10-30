@@ -13,7 +13,7 @@ class opts(object):
     self.parser.add_argument('task', default='ctdet',
                              help='ctdet | ddd | multi_pose | exdet | ctdet_semseg')
     self.parser.add_argument('--dataset', default='coco',
-                             help='coco | kitti | coco_hp | pascal | bdd | bddstream')
+                             help='coco | kitti | coco_hp | pascal | bdd | bddstream | fifth')
     self.parser.add_argument('--exp_id', default='default')
     self.parser.add_argument('--test', action='store_true')
     self.parser.add_argument('--debug', type=int, default=0,
@@ -80,6 +80,7 @@ class opts(object):
                              help='input height. -1 for default from dataset.')
     self.parser.add_argument('--input_w', type=int, default=-1, 
                              help='input width. -1 for default from dataset.')
+    self.parser.add_argument('--data_thresh', type=float, default=0.5)
     
     # train
     self.parser.add_argument('--lr', type=float, default=1.25e-4, 

@@ -17,6 +17,7 @@ from utils.image import draw_dense_reg
 from utils.coco import COCO
 from utils.distillation_utils import batch_segmentation_masks
 from pycocotools.cocoeval import COCOeval
+from pycocotools.coco import COCO as coco_dataset
 import math
 import pdb
 from lib.datasets.dataset.eval_bdd import evaluate_detection
@@ -24,6 +25,7 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 from PIL import Image
 import time
+import copy
 
 from lib.datasets.dataset.label_mappings import coco2bdd_class_groups, bdd_class_groups, combined_label_names, detectron_classes, coco_class_groups, get_remap
 
@@ -166,8 +168,10 @@ class BDDStream(data.IterableDataset):
     self.rate = None
     self.width = 1280
     self.height = 720
-    
+    self.coco = coco.COCO(opt.ann_paths[0])
     self.remap_coco2bdd = get_remap(coco2bdd_class_groups)
+    self.cur_im = False
+    self.cur_inst = (None, None)
   
   def _coco_box_to_bbox(self, box):
     bbox = np.array([box[0], box[1], box[0] + box[2], box[1] + box[3]],
@@ -206,6 +210,24 @@ class BDDStream(data.IterableDataset):
       inst.append(ann)
     return inst
 
+  def mmdetect_pred2inst(self, idx):
+    inst = []
+    ann_ids = self.coco.getAnnIds(imgIds=[idx])
+    anns = copy.deepcopy(self.coco.loadAnns(ids=ann_ids))
+
+    def _coco_box_to_bbox(bbox):
+      return [(bbox[0]), (bbox[1]),
+              (bbox[2] + bbox[0]), (bbox[3] + bbox[1])]
+    
+    for i in range(len(anns)):
+      if anns[i]['score'] >= 0.5:
+        ann = {
+          'category_id': anns[i]['category_id'], # remap(self.remap_coco2bdd, detectron_classes[classes[i]]),
+          'bbox': _coco_box_to_bbox(anns[i]['bbox'])
+        }
+        inst.append(ann)
+    return inst
+
   def _frame_from_video(self, video):
     while video.isOpened():
         success, frame = video.read()
@@ -236,14 +258,13 @@ class BDDStream(data.IterableDataset):
         self.length = int(self.cap.get(cv2.CAP_PROP_FRAME_COUNT))
         self.frame_gen = self._frame_from_video(self.cap)
       
-      self.detections = pickle.load(open(self.annotation_path[self.vid_i], 'rb'))
-      self.num_frames = len(self.detections)
+      # self.detections = pickle.load(open(self.annotation_path[self.vid_i], 'rb'))
       self.count = 0
       self.vid_i +=1
     end_load_vid = time.time()
     load_vid_time = end_load_vid - start
-
-    # load image depending on stream
+    
+      # load image depending on stream
     start_resize = time.time()
     if self.opt.vidstream == 'skvideo':
       img = self.cap[self.count]
@@ -252,9 +273,10 @@ class BDDStream(data.IterableDataset):
       # in_h = int(original_img.shape[0] / self.opt.downsample)
       # in_w = int(original_img.shape[1] / self.opt.downsample)
       # img = cv2.resize(original_img, (in_w, in_h))
+      # cv2.imwrite("/home/jl5/CenterNet/tmp.png", img)
 
     start_img_transform = time.time()
-    anns = self.pred_to_inst(self.detections[self.count])
+    anns = self.mmdetect_pred2inst(self.count)
     num_objs = min(len(anns), self.max_objs)
 
     height, width = img.shape[0], img.shape[1]
@@ -266,9 +288,9 @@ class BDDStream(data.IterableDataset):
     else:
       s = max(img.shape[0], img.shape[1]) * 1.0
       input_h, input_w = self.opt.input_h, self.opt.input_w
-    
+
     flipped = False
-    if self.split == 'train':
+    if split == 'train':
       if not self.opt.not_rand_crop:
         s = s * np.random.choice(np.arange(0.6, 1.4, 0.1))
         w_border = self._get_border(128, img.shape[1])
@@ -337,14 +359,14 @@ class BDDStream(data.IterableDataset):
       pdb.set_trace()
 
 
-    detect = self.detections[self.count]
-    if self.opt.task == 'ctdet_semseg':
-      seg_mask, weight_mask = batch_segmentation_masks(1, (720*3, 1280 * 3), np.array([detect['boxes']]), np.array([detect['classes']]), detect['masks'],
-          np.array([detect['scores']]), [len(detect['boxes'])], True, coco_class_groups, mask_threshold=0.5, box_threshold=self.opt.center_thresh, scale_boxes=False)
-      unbatch_seg = seg_mask[0].astype(np.uint8)
-      unbatch_weight = weight_mask[0].astype(np.uint8)
-      seg_mask = np.expand_dims(cv2.resize(unbatch_seg, (1280, 736)), axis=0).astype(np.int32)
-      weight_mask = np.expand_dims(cv2.resize(unbatch_weight, (1280, 736)), axis = 0).astype(bool)
+    # detect = self.detections[self.count]
+    # if self.opt.task == 'ctdet_semseg':
+    #   seg_mask, weight_mask = batch_segmentation_masks(1, (720, 1280), np.array([detect['boxes']]), np.array([detect['classes']]), detect['masks'],
+    #       np.array([detect['scores']]), [len(detect['boxes'])], True, coco_class_groups, mask_threshold=0.5, box_threshold=self.opt.center_thresh, scale_boxes=False)
+    #   unbatch_seg = seg_mask[0].astype(np.uint8)
+    #   unbatch_weight = weight_mask[0].astype(np.uint8)
+    #   seg_mask = np.expand_dims(cv2.resize(unbatch_seg, (1280, 736)), axis=0).astype(np.int32)
+    #   weight_mask = np.expand_dims(cv2.resize(unbatch_weight, (1280, 736)), axis = 0).astype(bool)
 
     
     start_detect = time.time()
@@ -352,7 +374,7 @@ class BDDStream(data.IterableDataset):
     for k in range(num_objs):
       ann = anns[k]
       bbox = np.array(ann['bbox'], dtype=np.float32) # self._coco_box_to_bbox(ann['bbox'])
-      bbox = bbox / self.opt.downsample # if need to downsample 
+      # bbox = bbox / self.opt.downsample # if need to downsample
       cls_id = int(self.cat_ids[ann['category_id']])
       if flipped:
         bbox[[0, 2]] = width - bbox[[2, 0]] - 1
@@ -403,7 +425,7 @@ class BDDStream(data.IterableDataset):
 
     end_detect_time = time.time()
     create_heatmap_time = end_detect_time - start_detect
-    # print("load vid {:.4f} | i,mg transform {:.4f} | create instance {:.4f} \n".format(load_vid_time, img_transform_time, create_heatmap_time))
+    # print("load vid {:.4f} | img transform {:.4f} | create instance {:.4f} \n".format(load_vid_time, img_transform_time, create_heatmap_time))
     return ret
   
   def reset(self):
@@ -417,13 +439,15 @@ class BDDStream(data.IterableDataset):
     pickle.dump(save_dict, open(save_dir + '/raw_save_dict.pkl', 'wb'))
 
   def run_online_eval(self, save_dict):
-    gt_coco = COCO(save_dict['gt_dict'])
-    dt_coco = gt_coco.loadRes(save_dict['dt_dict'])
-    E = COCOeval(gt_coco, dt_coco, iouType='bbox')
-    E.params.catIds = [0, 1, 2, 3, 5, 6, 7, 9]
-    E.evaluate()
-    E.accumulate()
-    E.summarize()
+
+    return
+    # gt_coco = COCO(save_dict['gt_dict'])
+    # dt_coco = gt_coco.loadRes(save_dict['dt_dict'])
+    # E = COCOeval(gt_coco, dt_coco, iouType='bbox')
+    # E.params.catIds = [0, 1, 2, 3, 5, 6, 7, 9]
+    # E.evaluate()
+    # E.accumulate()
+    # E.summarize()
   
   def __iter__(self):
     return self

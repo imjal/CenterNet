@@ -8,6 +8,7 @@ from .sample.ctdet import CTDetDataset
 from .sample.multi_pose import MultiPoseDataset
 
 from .dataset.coco import COCO
+from .dataset.driving_fifth_dataset import Driving
 from .dataset.pascal import PascalVOC
 from .dataset.kitti import KITTI
 from .dataset.coco_hp import COCOHP
@@ -19,7 +20,8 @@ dataset_factory = {
   'pascal': PascalVOC,
   'kitti': KITTI,
   'coco_hp': COCOHP, 
-  'bdd': BDD
+  'bdd': BDD, 
+  'fifth': Driving
 }
 
 _sample_factory = {

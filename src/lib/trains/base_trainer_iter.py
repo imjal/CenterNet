@@ -8,7 +8,7 @@ from progress.bar import Bar
 from models.data_parallel import DataParallel
 from utils.utils import AverageMeter
 import numpy as np
-from utils.metrics import get_metric, AccumCOCO
+from utils.metrics import get_metric, AccumCOCO, AccumCOCODetResult
 from scipy.spatial import distance
 import pdb
 import copy
@@ -24,6 +24,7 @@ class BaseTrainerIter(object):
     self.opt = opt
     self.optimizer = optimizer
     self.accum_coco = AccumCOCO()
+    self.accum_coco_det = AccumCOCODetResult()
   
   def set_device(self, gpus, chunk_sizes, device):
     if len(gpus) > 1:
@@ -38,7 +39,7 @@ class BaseTrainerIter(object):
         if isinstance(v, torch.Tensor):
           state[k] = v.to(device=device, non_blocking=True)
 
-  def run_epoch(self, phase, epoch, data_loader):
+  def run_epoch(self, phase, epoch, data_loader, no_aug_loader=None):
     model_with_loss = self.model
     if phase == 'train':
       model_with_loss.train()
@@ -96,13 +97,13 @@ class BaseTrainerIter(object):
           u = 0
           update = True
           while(update):
-            output, loss, loss_stats, tmp_model_time = self.train_model(batch)
+            output, tmp_model_time  = self.run_model(batch)
             total_model_time += tmp_model_time
             # save the stuff every iteration
             acc = metric.get_score(batch, output, u)
             print(acc)
             if u < umax and acc < a_thresh:
-              update_time = self.update_model(loss)
+              update_time = self.update_model(batch)
             else:
               update = False
             u+=1
@@ -160,6 +161,7 @@ class BaseTrainerIter(object):
       if opt.display_timing:
         time_str = 'total {:.3f}s| load {:.3f}s | model_time {:.3f}s | update_time {:.3f}s | display {:.3f}s'.format(tot_time, load_time, model_time, update_time, display_time)
         print(time_str)
+      self.save_result(output, batch, results)
       del output
       iter_id+=1
     
@@ -186,10 +188,13 @@ class BaseTrainerIter(object):
       plt.xlabel('iteration')
     
     # save dict
-    gt_dict = self.accum_coco.get_gt()
-    dt_dict = self.accum_coco.get_dt()
-    save_dict['gt_dict'] = gt_dict
-    save_dict['dt_dict'] = dt_dict
+    # gt_dict = self.accum_coco.get_gt()
+    # dt_dict = self.accum_coco.get_dt()
+    dt_dict = self.accum_coco_det.get_dt()
+
+    # save_dict['gt_dict'] = gt_dict
+    # save_dict['dt_dict'] = dt_dict
+    save_dict['full_res_pred'] = dt_dict
     return ret, results, save_dict
   
   def debug(self, batch, output, iter_id):
@@ -210,5 +215,5 @@ class BaseTrainerIter(object):
   def update_model(self, loss):
         raise NotImplementedError
 
-  def train(self, epoch, data_loader):
-    return self.run_epoch('train', epoch, data_loader)
+  def train(self, epoch, data_loader, aug_loader=None):
+    return self.run_epoch('train', epoch, data_loader, aug_loader)

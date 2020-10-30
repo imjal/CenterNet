@@ -31,8 +31,10 @@ def main(opt):
   print('Creating model...')
   model = create_model(opt.arch, opt.heads, opt.head_conv, opt.track_feature)
   if opt.freeze:
-    for param in chain(model.base.parameters(), model.dla_up.parameters()):
+    for param in model.parameters():
       param.requires_grad = False
+    for param in chain(model.wh[2].parameters(), model.reg[2].parameters()): # model reg model.hm[2].parameters()
+      param.requires_grad = True
   if opt.optimizer == 'RMSProp':
     optimizer = torch.optim.RMSprop(filter(lambda p: p.requires_grad, model.parameters()), opt.lr, momentum=opt.momentum)
   else:
@@ -56,7 +58,7 @@ def main(opt):
   )
 
   if opt.dataset == 'bddstream':
-    train_loader = torch.utils.data.DataLoader(Dataset(opt, 'val')) # , pin_memory=True)
+    train_loader = torch.utils.data.DataLoader(Dataset(opt, 'train')) # , pin_memory=True)
   else:
     train_loader = torch.utils.data.DataLoader(
         Dataset(opt, 'val'),
