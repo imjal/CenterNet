@@ -66,7 +66,16 @@ class CtdetTrainerIter(BaseTrainerIter):
       model_time = (current_time - start_time)
       return output[0], model_time
     
-  def update_model(self, loss):
+  def update_model(self, batch):
+      start_time = time.time()
+      self.model.train()
+      for k in batch:
+        if k != 'meta':
+          batch[k] = batch[k].to(device=self.opt.device, non_blocking=True) # send batch to gpu
+      output, loss, loss_stats = self.model(batch)
+      loss = loss.mean() # mean of loss
+      current_time = time.time()
+      model_time = (current_time - start_time)
       start_time = time.time()
       self.optimizer.zero_grad()
       loss.backward()
@@ -152,8 +161,7 @@ class CtdetTrainerIter(BaseTrainerIter):
         debugger.save_all_imgs(opt.debug_dir, prefix=iter_id)
       # else:
       #   debugger.show_all_imgs(pause=True)
-      
-
+  
   def save_result(self, output, batch, results):
     reg = output['reg'] if self.opt.reg_offset else None
     dets = ctdet_decode(
@@ -165,7 +173,8 @@ class CtdetTrainerIter(BaseTrainerIter):
       batch['meta']['s'].cpu().numpy(),
       output['hm'].shape[2], output['hm'].shape[3], output['hm'].shape[1])
     results[batch['meta']['img_id'].cpu().numpy()[0]] = dets_out[0]
-    if self.opt.dataset == 'bdd' or self.opt.dataset == 'bddstream':
-      if 'map_img_id' not in results:
-        results['map_img_id'] = {}
-      results['map_img_id'][batch['meta']['img_id'].cpu().numpy()[0]] = batch['meta']['file_name']
+    self.accum_coco_det.add_det_to_coco(batch['meta']['img_id'].cpu().numpy()[0], dets_out[0])
+    # if self.opt.dataset == 'bdd' or self.opt.dataset == 'bddstream':
+    #   if 'map_img_id' not in results:
+    #     results['map_img_id'] = {}
+    #   results['map_img_id'][batch['meta']['img_id'].cpu().numpy()[0]] = batch['meta']['file_name']

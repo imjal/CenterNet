@@ -4,6 +4,9 @@ import pdb
 from abc import ABC, abstractmethod
 import copy
 from lib.datasets.dataset.label_mappings import coco_class_groups, get_remap, bdd_class_groups, coco2bdd_class_groups, detectron_classes
+import matplotlib.pyplot as plt
+import matplotlib.patches as patches
+import cv2
 
 # TODO: find some fix for this to make it less disgusting
 def ret_categories():
@@ -17,6 +20,58 @@ def ret_categories():
 def ret_categories_downsized():
     return [{'supercategory': 'person', 'id': 0, 'name': 'person'}, 
     {'supercategory': 'vehicle', 'id': 1, 'name': '4 wheeler'}, {'supercategory': 'vehicle', 'id': 2, 'name': '2 wheeler'}]
+
+
+class AccumCOCODetResult:
+    def __init__(self):
+        self.cocoDt = []
+        self.dt_counter = 0
+        # self.remap_coco2bdd = get_remap(coco2bdd_class_groups)
+
+    def add_det_to_coco(self, iter_id, results_dir):
+        '''
+        convert a CenterNet detection to coco image instance
+        '''
+        def remap(mp, cls):
+            if cls in mp:
+                return mp[cls]
+            else:
+                return -1
+        # fig,ax = plt.subplots(1)
+        # im = cv2.imread('/home/jl5/CenterNet/tmp.png')[:, :, ::-1]
+        # ax.imshow(im)
+        for key, val in results_dir.items():
+            if len(val) == 0:
+                continue
+            for i in range(len(val)):
+                det = val[i]
+                bbox = [det[0], det[1], det[2]-det[0], det[3]- det[1]]
+                res = {
+                    "image_id": int(iter_id),
+                    "category_id": key-1, # key is the class id
+                    "bbox": bbox,
+                    "score": det[4],
+                    "area": bbox[2] * bbox[3] # box area
+                }
+                # rect = patches.Rectangle((bbox[0], bbox[1]),bbox[2],bbox[3],linewidth=1,edgecolor='r',facecolor='none')
+                # ax.add_patch(rect)
+                # if is_baseline:
+                #     # remapped = remap(self.remap_coco2bdd, detectron_classes[int(dets[i][5])])
+                #     # if remapped < 0:
+                #     #     continue
+                #     # res["category_id"] = remapped
+                #     res['id'] = self.dt_counter
+                #     self.dt_counter+=1
+                #     self.cocoDt += [res]
+                # else:
+                res['id'] = self.dt_counter
+                self.dt_counter+=1
+                self.cocoDt += [res]
+        # plt.savefig('/home/jl5/CenterNet/tmp_pic.png')
+
+    def get_dt(self):
+        return self.cocoDt
+
 
 
 class AccumCOCO:

@@ -33,8 +33,10 @@ def main(opt):
   print('Creating model...')
   model = create_model(opt.arch, opt.heads, opt.head_conv)
   if opt.freeze:
-    for param in chain(model.base.parameters(), model.dla_up.parameters()):
+    for param in chain(model.parameters()):
       param.requires_grad = False
+    for param in chain(model.hm.parameters()):
+      param.requires_grad = True
   if opt.optimizer == 'RMSProp':
     optimizer = torch.optim.RMSprop(filter(lambda p: p.requires_grad, model.parameters()), opt.lr, momentum=opt.momentum)
   else:
@@ -96,7 +98,10 @@ def main(opt):
         save_model(os.path.join(opt.save_dir, 'model_best.pth'), 
                    epoch, model)
     else:
-      save_model(os.path.join(opt.save_dir, 'model_last.pth'), 
+      save_model(os.path.join(opt.save_dir, f'model_last.pth'), 
+                 epoch, model, optimizer)
+      if epoch % 5 == 0: 
+        save_model(os.path.join(opt.save_dir, f'model_{epoch}.pth'), 
                  epoch, model, optimizer)
     logger.write('\n')
     if epoch in opt.lr_step:
