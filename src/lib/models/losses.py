@@ -39,15 +39,20 @@ def _slow_neg_loss(pred, gt):
   return loss
 
 
-def _neg_loss(pred, gt):
+def _neg_loss(pred, gt, no_loss_map=None):
   ''' Modified focal loss. Exactly the same as CornerNet.
       Runs faster and costs a little bit more memory
     Arguments:
       pred (batch x c x h x w)
       gt_regr (batch x c x h x w)
   '''
-  pos_inds = gt.eq(1).float()
-  neg_inds = gt.lt(1).float()
+  if no_loss_map is not None:
+    no_loss_map = 1 - (no_loss_map > 0).float()
+    pos_inds = gt.eq(1).float()
+    neg_inds = gt.lt(1).float() * no_loss_map
+  else:
+    pos_inds = gt.eq(1).float()
+    neg_inds = gt.lt(1).float()
 
   neg_weights = torch.pow(1 - gt, 4)
 
@@ -64,6 +69,7 @@ def _neg_loss(pred, gt):
     loss = loss - neg_loss
   else:
     loss = loss - (pos_loss + neg_loss) / num_pos
+  # import pdb; pdb.set_trace()
   return loss
 
 def _not_faster_neg_loss(pred, gt):
@@ -117,8 +123,8 @@ class FocalLoss(nn.Module):
     super(FocalLoss, self).__init__()
     self.neg_loss = _neg_loss
 
-  def forward(self, out, target):
-    return self.neg_loss(out, target)
+  def forward(self, out, target, no_loss_map=None):
+    return self.neg_loss(out, target, no_loss_map)
 
 class CrossEntropy2d(nn.Module):
 

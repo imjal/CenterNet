@@ -1,6 +1,6 @@
 #!/bin/bash
 python main.py ctdet_stream  --exp_id resdcn18_pt_baseline_mAP80_thresh6_$1 --batch_size 1 --lr 5e-4 --gpus 0 --num_workers 1 --num_epochs 1 \
-    --arch resdcn_18  \
+    --arch resdcn_18  --freeze \
     --num_iters 1210 \
     --dataset bddstream --vid_paths /data2/jl5/bdd100k/videos/100k/train/02133057-fc70cc0e.mov \
     --ann_paths /data2/jl5/bdd100k_pred/train/instances_02133057-fc70cc0e.pkl \

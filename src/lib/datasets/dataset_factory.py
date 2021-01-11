@@ -13,6 +13,8 @@ from .dataset.pascal import PascalVOC
 from .dataset.kitti import KITTI
 from .dataset.coco_hp import COCOHP
 from .dataset.bdd import BDD, BDDStream
+from .dataset.driving_fourth_dataset import DrivingFourth
+from .dataset.driving_half_dataset import DrivingHalf
 
 
 dataset_factory = {
@@ -21,7 +23,9 @@ dataset_factory = {
   'kitti': KITTI,
   'coco_hp': COCOHP, 
   'bdd': BDD, 
-  'fifth': Driving
+  'fifth': Driving,
+  'fourth': DrivingFourth, 
+  'half': DrivingHalf
 }
 
 _sample_factory = {

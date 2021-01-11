@@ -25,6 +25,10 @@ detectron_classes = [
 coco2bdd_class_groups = [ ['person'], [ 'car', 'bus', 'truck'], [ 'motorcycle', 'bicycle'] ]
 coco_class_groups = [ [detectron_classes.index(c) for c in g] for g in coco2bdd_class_groups ]
 
+vehicle_single_class = [['car', 'bus', 'truck']]
+vehicle_class_groups = [ [detectron_classes.index(c) for c in g] for g in vehicle_single_class]
+vehicle_label_names = ['vehicle']
+
 # coco2bdd_class_groups_nonjoint = [["person", "rider"], "car", "bus", "truck", "bike", "motorcycle", "traffic light"]
 # coco_class_groups_total = [detectron_classes.index(c) for c in coco2bdd_class_groups_nonjoint] 
 
@@ -63,7 +67,7 @@ bdd_semantic_labels = [
     'motorcycle',
     'bicycle',
 ]
+
 bdd2compat_class_groups = [ ['person', 'rider'], [ 'car', 'bus', 'truck'], [ 'motorcycle', 'bicycle'] ]
 bdd_class_groups = [ [bdd_semantic_labels.index(c) for c in g] for g in bdd2compat_class_groups]
-
 combined_label_names = ['human', '4 wheel vehicle', '2 wheel vechicle']

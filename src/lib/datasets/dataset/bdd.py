@@ -27,7 +27,7 @@ from PIL import Image
 import time
 import copy
 
-from lib.datasets.dataset.label_mappings import coco2bdd_class_groups, bdd_class_groups, combined_label_names, detectron_classes, coco_class_groups, get_remap
+from lib.datasets.dataset.label_mappings import vehicle_class_groups, vehicle_single_class, vehicle_label_names, combined_label_names, detectron_classes, coco_class_groups, get_remap
 
 import torch.utils.data as data
 
@@ -128,7 +128,7 @@ class BDD(data.Dataset):
 
 
 class BDDStream(data.IterableDataset):
-  num_classes = 80
+  num_classes = 1
   default_resolution = [512, 512]
   mean = np.array([0.485, 0.456, 0.406],
                    dtype=np.float32).reshape(1, 1, 3)
@@ -140,8 +140,9 @@ class BDDStream(data.IterableDataset):
     opt.data_dir = '/data2/jl5/'
     _ann_name = {'train': 'train'}
     self.max_objs = 50
-    self.class_name = ['__ignore__'] + detectron_classes
-    self._valid_ids = np.arange(1, self.num_classes + 1, dtype=np.int32)
+    # self.class_name = ['__ignore__'] + detectron_classes
+    self.class_name = vehicle_label_names
+    self._valid_ids = np.arange(0, self.num_classes, dtype=np.int32)
     self.cat_ids = {v: i for i, v in enumerate(self._valid_ids)}
     self._data_rng = np.random.RandomState(123)
     self._eig_val = np.array([0.2141788, 0.01817699, 0.00341571],
@@ -169,7 +170,7 @@ class BDDStream(data.IterableDataset):
     self.width = 1280
     self.height = 720
     self.coco = coco.COCO(opt.ann_paths[0])
-    self.remap_coco2bdd = get_remap(coco2bdd_class_groups)
+    self.remap_coco2bdd = get_remap(vehicle_class_groups)
     self.cur_im = False
     self.cur_inst = (None, None)
   
@@ -201,8 +202,6 @@ class BDDStream(data.IterableDataset):
         return 0
 
     for i in range(len(bbox)):
-      # if remap(self.remap_coco2bdd, detectron_classes[classes[i]]) == 0:
-      #   continue
       ann = {
         'category_id': classes[i] + 1, # remap(self.remap_coco2bdd, detectron_classes[classes[i]]),
         'bbox': bbox[i] # _bbox_to_coco_bbox(bbox[i])
@@ -215,15 +214,24 @@ class BDDStream(data.IterableDataset):
     ann_ids = self.coco.getAnnIds(imgIds=[idx])
     anns = copy.deepcopy(self.coco.loadAnns(ids=ann_ids))
 
+    def remap(mp, cls):
+      if cls in mp:
+        return mp[cls]
+      else:
+        return -1
+
     def _coco_box_to_bbox(bbox):
       return [(bbox[0]), (bbox[1]),
               (bbox[2] + bbox[0]), (bbox[3] + bbox[1])]
     
     for i in range(len(anns)):
-      if anns[i]['score'] >= 0.5:
+      if anns[i]['score'] > 0.3:
+        if remap(self.remap_coco2bdd, anns[i]['category_id']-1) == -1:
+          continue
         ann = {
-          'category_id': anns[i]['category_id'], # remap(self.remap_coco2bdd, detectron_classes[classes[i]]),
-          'bbox': _coco_box_to_bbox(anns[i]['bbox'])
+          'category_id': remap(self.remap_coco2bdd, anns[i]['category_id']-1),
+          'bbox': _coco_box_to_bbox(anns[i]['bbox']),
+          'score': anns[i]['score']
         }
         inst.append(ann)
     return inst
@@ -341,6 +349,7 @@ class BDDStream(data.IterableDataset):
     reg_mask = np.zeros((self.max_objs), dtype=np.uint8)
     cat_spec_wh = np.zeros((self.max_objs, num_classes * 2), dtype=np.float32)
     cat_spec_mask = np.zeros((self.max_objs, num_classes * 2), dtype=np.uint8)
+    unconfident_hm = np.zeros((num_classes, output_h, output_w), dtype=np.float32)
     
     draw_gaussian = draw_msra_gaussian if self.opt.mse_loss else \
                     draw_umich_gaussian
@@ -390,11 +399,16 @@ class BDDStream(data.IterableDataset):
         ct = np.array(
           [(bbox[0] + bbox[2]) / 2, (bbox[1] + bbox[3]) / 2], dtype=np.float32)
         ct_int = ct.astype(np.int32)
-        draw_gaussian(hm[cls_id], ct_int, radius)
+        if ann['score'] >= 0.3 and ann['score'] < 0.5:
+          draw_gaussian(unconfident_hm[cls_id], ct_int, radius)
+          reg_mask[k] = 0
+        else:
+          draw_gaussian(hm[cls_id], ct_int, radius)
+          reg_mask[k] = 1
         wh[k] = 1. * w, 1. * h
         ind[k] = ct_int[1] * output_w + ct_int[0]
         reg[k] = ct - ct_int
-        reg_mask[k] = 1
+        
         cat_spec_wh[k, cls_id * 2: cls_id * 2 + 2] = wh[k]
         cat_spec_mask[k, cls_id * 2: cls_id * 2 + 2] = 1
         if self.opt.dense_wh:
@@ -404,7 +418,7 @@ class BDDStream(data.IterableDataset):
     if self.opt.task == 'ctdet_semseg':
           ret = {'input': inp, 'hm': hm, 'reg_mask': reg_mask, 'ind': ind, 'wh': wh, 'seg': seg_mask, 'weight_seg': weight_mask}
     else:
-      ret = {'input': inp, 'hm': hm, 'reg_mask': reg_mask, 'ind': ind, 'wh': wh}
+      ret = {'input': inp, 'hm': hm, 'reg_mask': reg_mask, 'ind': ind, 'wh': wh, 'unconf_hm': unconfident_hm}
     if self.opt.dense_wh:
       hm_a = hm.max(axis=0, keepdims=True)
       dense_wh_mask = np.concatenate([hm_a, hm_a], axis=0)

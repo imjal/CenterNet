@@ -35,7 +35,7 @@ def main(opt):
   if opt.freeze:
     for param in chain(model.parameters()):
       param.requires_grad = False
-    for param in chain(model.hm.parameters()):
+    for param in chain(model.hm[2].parameters(), model.wh[2].parameters(), model.reg[2].parameters()):
       param.requires_grad = True
   if opt.optimizer == 'RMSProp':
     optimizer = torch.optim.RMSprop(filter(lambda p: p.requires_grad, model.parameters()), opt.lr, momentum=opt.momentum)
@@ -63,7 +63,7 @@ def main(opt):
     train_loader = torch.utils.data.DataLoader(Dataset(opt, 'train')) # , pin_memory=True)
   else:
     train_loader = torch.utils.data.DataLoader(
-        Dataset(opt, 'train'), 
+        Dataset(opt, 'train'),
         shuffle=True,
         batch_size=opt.batch_size,
         num_workers=opt.num_workers, 
@@ -98,11 +98,15 @@ def main(opt):
         save_model(os.path.join(opt.save_dir, 'model_best.pth'), 
                    epoch, model)
     else:
-      save_model(os.path.join(opt.save_dir, f'model_last.pth'), 
-                 epoch, model, optimizer)
-      if epoch % 5 == 0: 
+      # save_model(os.path.join(opt.save_dir, f'model_last.pth'), 
+      #            epoch, model, optimizer)
+      if epoch < 25:
         save_model(os.path.join(opt.save_dir, f'model_{epoch}.pth'), 
-                 epoch, model, optimizer)
+                  epoch, model, optimizer)
+      else:
+        if epoch % 5 == 0:
+          save_model(os.path.join(opt.save_dir, f'model_{epoch}.pth'), 
+                    epoch, model, optimizer)
     logger.write('\n')
     if epoch in opt.lr_step:
       save_model(os.path.join(opt.save_dir, 'model_{}.pth'.format(epoch)), 

@@ -1,7 +1,7 @@
 #!/bin/bash
-python online_distillation.py ctdet_stream --exp_id resdcn18_adaptive_driving_ap75_ $1 \
+python online_distillation.py ctdet_stream --exp_id resdcn18_adaptive_driving_redo_$1_$2_$3 \
     --batch_size 1 --lr 5e-$3 --gpus 0 --num_workers 1 --num_epochs 1 \
-    --arch resdcn_18 --adaptive \
+    --arch resdcn_18 --adaptive --save_video --freeze \
     --num_iters 17824 \
     --dataset bddstream --vid_paths /data2/jl5/driving1/driving$1.mp4 \
     --ann_paths /data2/jl5/mmdetect_results/driving$1/coco_images.json \
