@@ -41,6 +41,10 @@ class Debugger(object):
         (255, 0, 0), (0, 0, 255), (255, 0, 0), (0, 0, 255),
         (255, 0, 0), (0, 0, 255), (255, 0, 0), (0, 0, 255),
         (255, 0, 0), (0, 0, 255)]
+    elif opt.agg_classes:
+      self.names = coco2bdd_class_names
+    elif opt.single_class:
+      self.names = [opt.single_class]
     elif num_classes == 80 or dataset == 'coco':
       self.names = coco_class_name
     elif num_classes == 20 or dataset == 'pascal':
@@ -65,10 +69,7 @@ class Debugger(object):
     elif num_classes==10 or dataset=='bdd':
       self.names = bdd_class_name
     elif num_classes==3 or dataset=='bddstream':
-      if not opt.adaptive:
-         self.names = coco_class_name
-      else:
-        self.names = coco_class_name
+      self.names = coco_class_name
     num_classes = len(self.names)
     self.down_ratio=down_ratio
     # for bird view

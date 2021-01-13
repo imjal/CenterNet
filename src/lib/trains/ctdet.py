@@ -93,7 +93,7 @@ class CtdetTrainer(BaseTrainer):
     dets_gt = batch['meta']['gt_det'].numpy().reshape(1, -1, dets.shape[2])
     dets_gt[:, :, :4] *= opt.down_ratio
     for i in range(1):
-      debugger = Debugger(
+      debugger = Debugger(opt,
         dataset=opt.dataset, ipynb=(opt.debug==3), theme=opt.debugger_theme)
       img = batch['input'][i].detach().cpu().numpy().transpose(1, 2, 0)
       img = np.clip(((
