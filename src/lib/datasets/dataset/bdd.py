@@ -26,8 +26,9 @@ import matplotlib.patches as patches
 from PIL import Image
 import time
 import copy
+from utils.metrics import get_iou
 
-from lib.datasets.dataset.label_mappings import vehicle_class_groups, vehicle_single_class, vehicle_label_names, combined_label_names, detectron_classes, coco_class_groups, get_remap
+from lib.datasets.dataset.label_mappings import vehicle_class_groups, bdd_class_groups, vehicle_single_class, vehicle_label_names, combined_label_names, detectron_classes, coco_class_groups, get_remap
 
 import torch.utils.data as data
 
@@ -128,7 +129,7 @@ class BDD(data.Dataset):
 
 
 class BDDStream(data.IterableDataset):
-  num_classes = 1
+  num_classes = 80
   default_resolution = [512, 512]
   mean = np.array([0.485, 0.456, 0.406],
                    dtype=np.float32).reshape(1, 1, 3)
@@ -140,8 +141,17 @@ class BDDStream(data.IterableDataset):
     opt.data_dir = '/data2/jl5/'
     _ann_name = {'train': 'train'}
     self.max_objs = 50
-    # self.class_name = ['__ignore__'] + detectron_classes
-    self.class_name = vehicle_label_names
+    if opt.agg_classes:
+      self.num_classes = len(vehicle_label_names)
+      self.class_name = vehicle_label_names
+      self.remap_coco2bdd = get_remap(vehicle_class_groups)
+    elif opt.single_class:
+      self.num_classes = 1
+      self.class_name = [opt.single_class]
+      self.remap_coco2bdd = get_remap([[detectron_classes.index(opt.single_class)]])
+    else:
+      self.class_name = ['__ignore__'] + detectron_classes
+    
     self._valid_ids = np.arange(0, self.num_classes, dtype=np.int32)
     self.cat_ids = {v: i for i, v in enumerate(self._valid_ids)}
     self._data_rng = np.random.RandomState(123)
@@ -155,8 +165,6 @@ class BDDStream(data.IterableDataset):
 
     self.split = split
     self.opt = opt
-    if not opt.adaptive:
-      self.num_classes = 80
     self.video_paths = opt.vid_paths
     self.num_videos = len(opt.vid_paths)
     self.annotation_path = opt.ann_paths
@@ -170,7 +178,6 @@ class BDDStream(data.IterableDataset):
     self.width = 1280
     self.height = 720
     self.coco = coco.COCO(opt.ann_paths[0])
-    self.remap_coco2bdd = get_remap(vehicle_class_groups)
     self.cur_im = False
     self.cur_inst = (None, None)
   
@@ -184,30 +191,6 @@ class BDDStream(data.IterableDataset):
     while size - border // i <= border // i:
         i *= 2
     return border // i
-  
-  def pred_to_inst(self, pred):
-    inst = []
-    bbox = pred['boxes']
-    classes = pred['classes']
-    masks = pred['masks']
-
-    def _bbox_to_coco_bbox(bbox):
-      return [(bbox[0]), (bbox[1]),
-              (bbox[2] - bbox[0]), (bbox[3] - bbox[1])]
-
-    def remap(mp, cls):
-      if cls in mp:
-        return mp[cls] + 1
-      else:
-        return 0
-
-    for i in range(len(bbox)):
-      ann = {
-        'category_id': classes[i] + 1, # remap(self.remap_coco2bdd, detectron_classes[classes[i]]),
-        'bbox': bbox[i] # _bbox_to_coco_bbox(bbox[i])
-        }
-      inst.append(ann)
-    return inst
 
   def mmdetect_pred2inst(self, idx):
     inst = []
@@ -225,15 +208,29 @@ class BDDStream(data.IterableDataset):
               (bbox[2] + bbox[0]), (bbox[3] + bbox[1])]
     
     for i in range(len(anns)):
-      if anns[i]['score'] > 0.3:
-        if remap(self.remap_coco2bdd, anns[i]['category_id']-1) == -1:
+      if anns[i]['score'] > self.opt.thresh:
+        new_cat_id = remap(self.remap_coco2bdd, anns[i]['category_id']-1)
+        if new_cat_id == -1:
           continue
         ann = {
-          'category_id': remap(self.remap_coco2bdd, anns[i]['category_id']-1),
+          'category_id': new_cat_id,
           'bbox': _coco_box_to_bbox(anns[i]['bbox']),
           'score': anns[i]['score']
         }
         inst.append(ann)
+    
+    # get rid of overlapping instances using nms
+    rejected_list = []
+    for i in range(len(inst)):
+      for j in range(len(inst)):
+        if j in rejected_list: 
+          continue
+        if i <= j:
+          iou_calc = get_iou(inst[i]['bbox'], inst[j]['bbox'])
+          if iou_calc > self.opt.iou_thresh:
+            rejected_list += [i]
+    inst = [i for j, i in enumerate(inst) if j not in rejected_list]
+
     return inst
 
   def _frame_from_video(self, video):

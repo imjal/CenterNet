@@ -240,6 +240,10 @@ class opts(object):
     self.parser.add_argument('--delta_max', type=int, default=64, help='number of iterations to skip updating in stream')
     self.parser.add_argument('--delta_min', type=int, default=8, help='number of iterations to skip updating in video stream')
     self.parser.add_argument('--umax', type=int, default=64, help='max number of iterations to update')
+    self.parser.add_argument('--num_classes', type=int, default=80, help='setting number of classes when agg_classes is invoked')
+    self.parser.add_argument('--agg_classes', action='store_true', help='Use aggregated class map details')
+    self.parser.add_argument('--single_class', default="", help='Use single class for training')
+    self.parser.add_argument('--nms_iou_thresh',type=float, default=0.8, help='Use single class for training')
     
     # metric collection
     self.parser.add_argument('--acc_metric', default='mAP', help= 'mAP | mIOU')
@@ -323,7 +327,12 @@ class opts(object):
   def update_dataset_info_and_set_heads(self, opt, dataset):
     input_h, input_w = dataset.default_resolution
     opt.mean, opt.std = dataset.mean, dataset.std
-    opt.num_classes = dataset.num_classes
+    if opt.agg_classes:
+      opt.num_classes = 3
+    elif opt.single_class:
+      opt.num_classes = 1
+    else:
+      opt.num_classes = dataset.num_classes
 
     # input_h(w): opt.input_h overrides opt.input_res overrides dataset default
     input_h = opt.input_res if opt.input_res > 0 else input_h
